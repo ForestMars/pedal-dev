@@ -95,3 +95,19 @@ A Webhook Secret is used to secure the payload sent from GitHub.
         openssl rand -hex 32
 
 2.  **Copy the output** and paste it into your ``.env`` file as ``GITHUB_WEBHOOK_SECRET``.
+
+---
+
+.. _testing:
+
+Testing
+=======
+
+Use these ``curl`` commands to test the local server endpoints after starting the application and completing all setup steps.
+
+Test Webhook Endpoint
+---------------------
+
+This command simulates a **Pull Request Opened** event being sent to your local webhook listener:
+
+.. code-block
