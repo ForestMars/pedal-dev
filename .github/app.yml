@@ -1,7 +1,7 @@
 name: PR Review Agent
 url: https://github.com/ForestMars/pedal2
 hook_attributes:
-  url: http://localhost:3000
+  url: https://smee.io/soupchannel
 description: Automated AI code review for pull requests
 public: false
 default_permissions:
