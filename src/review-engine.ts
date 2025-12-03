@@ -32,8 +32,16 @@ interface ReviewFinding {
   line?: number;
 }
 
+interface FilterStats {
+  total: number;
+  reviewed: number;
+  ignored: number;
+  tooLarge: number;
+}
+
 export class ReviewEngine {
   private configLoader: ConfigLoader;
+  private filterStats?: FilterStats;
 
   constructor(private llm: LLMProvider) {
     this.configLoader = new ConfigLoader();
@@ -103,87 +111,119 @@ export class ReviewEngine {
   /**
    * Filters and limits the files to be reviewed.
    */
-private filterFiles(files: any[]): PRFile[] {
-  const ignorePatterns = [
-    /\.lock$/,
-    /package-lock\.json$/,
-    /yarn\.lock$/,
-    /bun\.lockb$/,
-    /\.min\.(js|css)$/,
-    /\.map$/,
-    /dist\//,
-    /build\//,
-    /node_modules\//,
-    // Documentation files - don't send to code review
-    /^README/i,
-    /\.md$/,
-    /\.rst$/,
-    /^LICENSE/i,
-    /^CHANGELOG/i
-  ];
+  private filterFiles(files: any[]): PRFile[] {
+    const ignorePatterns = [
+      /\.lock$/,
+      /package-lock\.json$/,
+      /yarn\.lock$/,
+      /bun\.lockb$/,
+      /\.min\.(js|css)$/,
+      /\.map$/,
+      /dist\//,
+      /build\//,
+      /node_modules\//,
+      // Documentation files - don't send to code review
+      /^README/i,
+      /\.md$/,
+      /\.rst$/,
+      /^LICENSE/i,
+      /^CHANGELOG/i
+    ];
 
-  const MAX_FILE_CHANGES = 800;  // Increased from 500
-  const MAX_FILES = 15;           // Increased from 10
+    const MAX_FILE_CHANGES = 800;
+    const MAX_FILES = 15;
 
-  console.log(`\n📊 FILE FILTERING:`);
-  console.log(`   Total files in PR: ${files.length}`);
+    console.log(`\n📊 FILE FILTERING:`);
+    console.log(`   Total files in PR: ${files.length}`);
 
-  // Track what gets filtered and why
-  const filtered = files.filter(f => {
-    // Check ignore patterns
-    if (ignorePatterns.some(pattern => pattern.test(f.filename))) {
-      console.log(`   ✗ IGNORED: ${f.filename} (matched ignore pattern)`);
-      return false;
+    const stats: FilterStats = {
+      total: files.length,
+      reviewed: 0,
+      ignored: 0,
+      tooLarge: 0
+    };
+
+    const filtered = files.filter(f => {
+      if (ignorePatterns.some(pattern => pattern.test(f.filename))) {
+        console.log(`   ✗ IGNORED: ${f.filename} (matched ignore pattern)`);
+        stats.ignored++;
+        return false;
+      }
+      
+      if (f.changes >= MAX_FILE_CHANGES) {
+        console.log(`   ✗ TOO LARGE: ${f.filename} (${f.changes} changes, limit: ${MAX_FILE_CHANGES})`);
+        stats.tooLarge++;
+        return false;
+      }
+      
+      console.log(`   ✓ INCLUDED: ${f.filename} (${f.changes} changes)`);
+      return true;
+    });
+
+    const result = filtered.slice(0, MAX_FILES);
+    stats.reviewed = result.length;
+
+    if (filtered.length > MAX_FILES) {
+      console.log(`   ⚠️  WARNING: Truncated to first ${MAX_FILES} files (had ${filtered.length})`);
     }
-    
-    // Check file size
-    if (f.changes >= MAX_FILE_CHANGES) {
-      console.log(`   ✗ TOO LARGE: ${f.filename} (${f.changes} changes, limit: ${MAX_FILE_CHANGES})`);
-      return false;
-    }
-    
-    console.log(`   ✓ INCLUDED: ${f.filename} (${f.changes} changes)`);
-    return true;
-  });
 
-  const result = filtered.slice(0, MAX_FILES);
+    console.log(`\n   📋 FINAL: Reviewing ${result.length} of ${files.length} files\n`);
 
-  if (filtered.length > MAX_FILES) {
-    console.log(`   ⚠️  WARNING: Truncated to first ${MAX_FILES} files (had ${filtered.length})`);
+    this.filterStats = stats;
+
+    return result;
   }
-
-  console.log(`\n   📋 FINAL: Reviewing ${result.length} of ${files.length} files\n`);
-
-  return result;
-}
 
   /**
    * Generates the review by calling the LLM.
    */
-private async generateReview(pr: any, files: PRFile[]): Promise<ReviewFinding[]> {
-  const allFiles = files.length;
-  const reviewedFiles = files.slice(0, 15);
-  
-  // Warn if we're not reviewing everything
-  if (reviewedFiles.length < allFiles) {
-    console.warn(`⚠️  Only reviewing ${reviewedFiles.length} of ${allFiles} files due to limits`);
+  private async generateReview(pr: any, files: PRFile[]): Promise<ReviewFinding[]> {
+    const allFiles = files.length;
+    const reviewedFiles = files.slice(0, 15);
+    
+    if (reviewedFiles.length < allFiles) {
+      console.warn(`⚠️  Only reviewing ${reviewedFiles.length} of ${allFiles} files due to limits`);
+    }
+
+    const prompt = this.buildReviewPrompt(pr, reviewedFiles);
+    
+    try {
+      const response = await this.llm.generateReview(prompt);
+      console.log(`✓ Got response from LLM (${response.length} chars)`);
+      
+      const findings = this.parseReviewResponse(response);
+      console.log(`✓ Parsed ${findings.length} finding(s)`);
+      
+      return findings;
+    } catch (error) {
+      console.error('Error generating review:', error);
+      throw error;
+    }
   }
 
-  const prompt = this.buildReviewPrompt(pr, reviewedFiles);
-  
-  try {
-    const response = await this.llm.generateReview(prompt);
-    console.log(`✓ Got response from LLM (${response.length} chars)`);
+  /**
+   * Builds the review prompt by injecting PR data into the template.
+   */
+  private buildReviewPrompt(pr: any, files: PRFile[]): string {
+    const template = this.loadPromptTemplate();
     
-    const findings = this.parseReviewResponse(response);
-    console.log(`✓ Parsed ${findings.length} finding(s)`);
-    
-    return findings;
-  } catch (error) {
-    console.error('Error generating review:', error);
-    throw error;
+    const fileContext = files.map(f => `
+### File: ${f.filename} (${f.status})
+**Changes**: +${f.additions}/-${f.deletions} lines
+
+\`\`\`diff
+${f.patch || 'No diff available'}
+\`\`\`
+`).join('\n---\n');
+
+    return template
+      .replace('[PR_TITLE]', pr.title || 'No title')
+      .replace('[PR_BODY]', pr.body || 'No description')
+      .replace('[PR_AUTHOR]', pr.user?.login || 'unknown')
+      .replace('[FILE_COUNT]', files.length.toString())
+      .replace('[FILE_CONTEXT]', fileContext);
   }
-}
+
   /**
    * Loads the review prompt template from a file.
    */
@@ -235,17 +275,25 @@ private async generateReview(pr: any, files: PRFile[]): Promise<ReviewFinding[]>
     prNumber: number,
     sha: string,
     findings: ReviewFinding[]
-    ): Promise<void> {
+  ): Promise<void> {
     
     const modelName = this.llm.getModelName();
     let body = `## 🤖 AI Code Review (${this.llm.name} (${modelName}))\n\n`;
 
-    if (filesSkipped > 0) {
-      body += `⚠️ **Note:** Reviewed ${filesReviewed} of ${totalFiles} files. `;
-      body += `${filesSkipped} files were too large or filtered out.\n\n`;
+    if (this.filterStats && (this.filterStats.ignored > 0 || this.filterStats.tooLarge > 0)) {
+      body += `📊 **Coverage:** Reviewed ${this.filterStats.reviewed} of ${this.filterStats.total} files`;
+      
+      const skipped = [];
+      if (this.filterStats.ignored > 0) skipped.push(`${this.filterStats.ignored} config/docs`);
+      if (this.filterStats.tooLarge > 0) skipped.push(`${this.filterStats.tooLarge} too large`);
+      
+      if (skipped.length > 0) {
+        body += ` (${skipped.join(', ')})`;
+      }
+      
+      body += `\n\n`;
     }
 
-    // body += `Found ${findings.length} issue${findings.length > 1 ? 's' : ''}. Severity breakdown:\n\n`;
     body += `Found ${findings.length} issue${findings.length > 1 ? 's' : ''}:\n\n`;
 
     const highFindings = findings.filter(f => f.severity === 'high');
