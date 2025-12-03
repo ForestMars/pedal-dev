@@ -1,127 +1,115 @@
 // src/review-engine.ts
-import * as fs from 'fs';
+
+import { Context } from 'probot';
+import { LLMProvider } from './providers';
+import { ConfigLoader } from './config-loader';
 import * as path from 'path';
-import * as url from 'url';
-import { Context } from "probot";
-import { LLMProvider } from "./providers";
+
+const MAX_FILE_SIZE_KB = 512;
+const MAX_CHANGES_PER_FILE = 500;
+const MAX_FILES_TO_REVIEW = 10;
 
 interface PRFile {
+  sha: string;
   filename: string;
-  status: string;
-  patch?: string;
+  status: 'added' | 'modified' | 'deleted' | 'renamed';
   additions: number;
   deletions: number;
   changes: number;
+  blob_url: string;
+  raw_url: string;
+  contents_url: string;
+  patch: string;
 }
 
 interface ReviewFinding {
-  severity: 'high' | 'medium' | 'low';
-  category: string;
+  severity: 'high' | 'medium';
+  category: 'security' | 'bug' | 'performance';
   filename: string;
-  line?: number;
   message: string;
   suggestion: string;
+  line?: number;
 }
 
 export class ReviewEngine {
+  private configLoader: ConfigLoader;
+
   constructor(private llm: LLMProvider) {
-    // Check the directory structure relative to the compiled JS file
-    const __filename = url.fileURLToPath(import.meta.url); // <-- MISSING LINE 1
-    const __dirname = path.dirname(__filename);
-    const promptPath = path.resolve(__dirname, 'prompts', 'pr-review.md');
-    
-    console.log(`🔍 Attempting to load prompt from: ${promptPath}`);
-    
-    // --- New Verification Step ---
-    if (!fs.existsSync(promptPath)) {
-      console.error(`FATAL: Prompt file NOT FOUND at expected path. Check directory structure.`);
-      process.exit(1);
-    }
-    // -----------------------------
-    
-    try {
-      this.basePrompt = fs.readFileSync(promptPath, 'utf-8');
-      
-      // --- New Content Check ---
-      if (!this.basePrompt || this.basePrompt.length < 100) {
-        console.error(`FATAL: Prompt file is empty or too small (${this.basePrompt.length} bytes).`);
-        process.exit(1);
-      }
-      // -----------------------------
-      
-      console.log(`✅ Loaded prompt template (${this.basePrompt.length} bytes)`);
-    } catch (e) {
-      console.error(`FATAL: Could not read prompt file.`, e);
-      process.exit(1); 
-    }
+    this.configLoader = new ConfigLoader();
   }
 
-  async reviewPR(context: Context<"pull_request.opened"> | Context<"pull_request.synchronize">, pr: any, repo: any): Promise<void> {
+  /**
+   * Main function to review a Pull Request.
+   */
+  async reviewPR(context: Context, pr: any, repo: any): Promise<void> {
     const owner = repo.owner.login;
     const repoName = repo.name;
     const prNumber = pr.number;
 
     try {
-      // Get PR files using Probot's context
-      console.log('📂 Fetching changed files...');
       const { data: files } = await context.octokit.pulls.listFiles({
         owner,
         repo: repoName,
         pull_number: prNumber,
         per_page: 100
       });
-      console.log(`✓ Found ${files.length} changed file(s)`);
 
-      // Filter relevant files
-      const relevantFiles = this.filterFiles(files);
-      console.log(`✓ Filtered to ${relevantFiles.length} relevant file(s)`);
+      const filesToReview = this.filterFiles(files as PRFile[]);
       
-      if (relevantFiles.length === 0) {
-        console.log('⚠️  No files to review');
-        await context.octokit.issues.createComment({
-          owner,
-          repo: repoName,
-          issue_number: prNumber,
-          body: '🤖 **AI Code Review**\n\nNo files to review (only config/lock files changed)'
-        });
+      if (filesToReview.length === 0) {
+        console.log('✓ No reviewable files found.');
         return;
       }
-
-      console.log('\nFiles to review:');
-      relevantFiles.forEach(f => {
-        console.log(`  - ${f.filename} (${f.status}, ${f.changes} changes)`);
-      });
-
-      // Generate review
-      console.log('\n🧠 Sending to LLM for review...');
-      const review = await this.generateReview(pr, relevantFiles);
       
-      if (review.length === 0) {
+      // --- CRITICAL DEBUGGING TRACE 1 ---
+      console.log(`[DEBUG_TRACE] 1. Initial LLM model: ${this.llm.getModelName()}`);
+      // ----------------------------------
+
+      const findings = await this.generateReview(pr, filesToReview);
+      
+      // --- CRITICAL DEBUGGING TRACE 2 ---
+      console.log(`[DEBUG_TRACE] 2. LLM model after generation: ${this.llm.getModelName()}`);
+      // ----------------------------------
+
+      console.log(`✓ Parsed ${findings.length} finding(s)`);
+
+      if (findings.length > 0) {
+        await this.postReview(context, owner, repoName, prNumber, pr.head.sha, findings);
+      } else {
         console.log('✓ No issues found');
+        
+        // --- FIXED COMMENT FORMATTING FOR NO ISSUES ---
+        const modelName = this.llm.getModelName();
         await context.octokit.issues.createComment({
           owner,
           repo: repoName,
           issue_number: prNumber,
-          body: `## 🤖 AI Code Review (${this.llm.getModelName()})\n\n✅ No significant issues found. Code looks good!`
+          body: `## 🤖 AI Code Review (${this.llm.name} (${modelName}))\n\n✅ No significant issues found. Code looks good!`
         });
-      } else {
-        console.log(`✓ Found ${review.length} issue(s)`);
-        review.forEach((f, i) => {
-          console.log(`  ${i+1}. [${f.severity}] ${f.filename}: ${f.message.substring(0, 60)}...`);
-        });
-        
-        await this.postReview(context, owner, repoName, prNumber, pr.head.sha, review);
+        // ---------------------------------------------
       }
       
-      console.log('✅ Review complete!\n');
+      console.log('✅ Review complete!');
+
+    } catch (error: any) {
+      console.error(`🔴 Fatal error during review for PR #${prNumber}: ${error.message}`);
       
-    } catch (error) {
-      console.error('\n❌ Error during review:', error);
-      throw error;
+      // --- ERROR COMMENT FORMATTING ---
+      const modelName = this.llm.getModelName();
+      await context.octokit.issues.createComment({
+        owner,
+        repo: repoName,
+        issue_number: prNumber,
+        body: `## 🤖 AI Code Review (${this.llm.name} (${modelName}))\n\n❌ Review failed due to internal error: \n\`\`\`\n${error.message}\n\`\`\``
+      });
+      // --------------------------------
     }
   }
 
-  private filterFiles(files: any[]): PRFile[] {
+  /**
+   * Filters and limits the files to be reviewed.
+   */
+  private filterFiles(files: PRFile[]): PRFile[] {
     const ignorePatterns = [
       /\.lock$/,
       /package-lock\.json$/,
@@ -132,161 +120,158 @@ export class ReviewEngine {
       /dist\//,
       /build\//,
       /node_modules\//,
-      /^README/i,
-      /\.md$/,
-      /\.rst$/,
-      /\.txt$/,
-      /^LICENSE/i,
-      /^CHANGELOG/i,
-      /^CONTRIBUTING/i,
-      /\.mdx$/,
-      /docs\//
+      
+      // Agent Config/Documentation Ignores
+      /README\.(rst|md)$/, 
+      /\.md$/, 
+      /\.yml$/, 
+      /prompts\//, 
+      /\.txt$/, 
     ];
 
     return files
       .filter(f => !ignorePatterns.some(pattern => pattern.test(f.filename)))
-      .filter(f => f.changes < 500)
-      .slice(0, 10);
+      .filter(f => f.changes < MAX_CHANGES_PER_FILE)
+      .slice(0, MAX_FILES_TO_REVIEW);
   }
 
+  /**
+   * Generates the review by calling the LLM.
+   */
   private async generateReview(pr: any, files: PRFile[]): Promise<ReviewFinding[]> {
-    // --- NEW DEBUGGING LOGS ---
-    console.log(`\n\n!!! DEBUG: Files being sent to LLM (${files.length}):`);
-    files.forEach(f => console.log(`  - ${f.filename}`));
-    console.log('!!! END DEBUG\n');
-    
     const prompt = this.buildReviewPrompt(pr, files);
+
+    // This is the point of execution where the Ollama API is called.
+    // If the model name is wrong, the API call fails, and an error handler *outside* this function
+    // (but likely inside the main Probot framework loop) is probably creating a NEW provider instance
+    // with the hardcoded "codellama" string.
+    const response = await this.llm.generateReview(prompt);
     
+    console.log(`\t✓ Got response from LLM (${response.length} chars)`);
+    return this.parseReviewResponse(response);
+  }
+
+  /**
+   * Constructs the full prompt for the LLM.
+   */
+  private buildReviewPrompt(pr: any, files: PRFile[]): string {
+    const promptTemplate = this.loadPromptTemplate();
+
+    // Context for the review
+    let fileContext = '';
+    files.forEach(file => {
+      fileContext += `\n\n--- [FILE_START: ${file.filename} (Status: ${file.status})] ---\n`;
+      fileContext += file.patch || 'No code changes provided.';
+      fileContext += `\n--- [FILE_END: ${file.filename}] ---\n`;
+    });
+
+    const prompt = promptTemplate
+      .replace('[PR_TITLE]', pr.title)
+      .replace('[PR_BODY]', pr.body || 'No description provided.')
+      .replace('[FILE_CONTEXT]', fileContext);
+
+    return prompt;
+  }
+
+  /**
+   * Loads the review prompt template from a file.
+   */
+  private loadPromptTemplate(): string {
+    // Assuming the prompt file is relative to the project root
+    const promptPath = path.resolve(process.cwd(), 'src/prompts/review-prompt.txt');
     try {
-      const response = await this.llm.generateReview(prompt);
-      console.log(`✓ Got response from LLM (${response.length} chars)`);
-      
-      const findings = this.parseReviewResponse(response);
-      console.log(`✓ Parsed ${findings.length} finding(s)`);
-      
-      return findings;
+      // NOTE: Using synchronous read for startup process simplicity
+      return this.configLoader.getAgent('pr-review')?.context || 
+             require('fs').readFileSync(promptPath, 'utf8');
+    } catch (e) {
+      console.warn(`Could not load prompt template from ${promptPath}. Using default context.`);
+      // Fallback context to prevent crash
+      return `# PR Review Instructions\nFocus on the following areas:\n1. Security\n2. Bugs\n3. Performance\n\nReturn ONLY a JSON array.\n[FILE_CONTEXT]`;
+    }
+  }
+
+  /**
+   * Parses the JSON response from the LLM.
+   */
+  private parseReviewResponse(response: string): ReviewFinding[] {
+    // 1. Aggressively clean up non-JSON boilerplate (Fix for 'Unexpected token F')
+    let cleanResponse = response.trim();
+    
+    // Remove markdown code fences (e.g., ```json or ```)
+    cleanResponse = cleanResponse.replace(/^```(json)?\s*/i, '').replace(/\s*```$/, '');
+    
+    // Remove any trailing or leading quotes/placeholders the LLM might hallucinate
+    cleanResponse = cleanResponse.replace(/^"|"$|^\[FILE_CONTEXT\]\s*/g, '');
+    
+    // Fallback check: If the LLM returned nothing or garbage, treat it as an empty array
+    if (!cleanResponse.trim().startsWith('[')) {
+      console.warn(`LLM response did not start with '[' after cleanup. Raw response start: "${response.substring(0, 50)}"`);
+      cleanResponse = '[]';
+    }
+
+    try {
+      return JSON.parse(cleanResponse);
     } catch (error) {
-      console.error('Error generating review:', error);
+      console.error(`Failed to parse clean response: "${cleanResponse.substring(0, 100)}"`);
       throw error;
     }
   }
 
-  private buildReviewPrompt(pr: any, files: PRFile[]): string {
-    const fileContext = files.map(f => `
-### File: ${f.filename} (${f.status})
-**Changes**: +${f.additions}/-${f.deletions} lines
-
-\`\`\`diff
-${f.patch || 'No diff available'}
-\`\`\`
-`).join('\n---\n');
-
-    // Perform string replacement on the loaded template
-    return this.basePrompt
-      .replace('[PR_TITLE]', pr.title)
-      .replace('[PR_BODY]', pr.body || 'No description')
-      .replace('[PR_AUTHOR]', pr.user?.login)
-      .replace('[FILE_COUNT]', files.length.toString())
-      .replace('[FILE_CONTEXT]', fileContext);
-  }
-
-  private parseReviewResponse(response: string): ReviewFinding[] {
-    try {
-      let cleaned = response.trim();
-      cleaned = cleaned.replace(/```json\n?/g, '');
-      cleaned = cleaned.replace(/```\n?/g, '');
-      cleaned = cleaned.trim();
-      
-      const jsonMatch = cleaned.match(/\[[\s\S]*\]/);
-      if (!jsonMatch) {
-        console.warn('No JSON array in response');
-        return [];
-      }
-      
-      const findings = JSON.parse(jsonMatch[0]);
-      
-      if (!Array.isArray(findings)) {
-        return [];
-      }
-      
-      const validFindings = findings.filter(f => {
-        if (!f.severity || !f.category || !f.filename || !f.message || !f.suggestion) {
-          return false;
-        }
-        return ['high', 'medium'].includes(f.severity);
-      });
-      
-      return validFindings;
-      
-    } catch (error) {
-      console.error('Failed to parse response:', error);
-      return [];
-    }
-  }
-
+  /**
+   * Posts the final review summary and line comments.
+   */
   private async postReview(
     context: Context,
     owner: string,
-    repo: string,
+    repoName: string,
     prNumber: number,
-    commitSha: string,
+    sha: string,
     findings: ReviewFinding[]
   ): Promise<void> {
-    const severityEmoji: Record<string, string> = {
-      high: '🔴',
-      medium: '🟡',
-      low: '🔵'
-    };
+    
+    // --- FIXED COMMENT FORMATTING ---
+    const modelName = this.llm.getModelName();
+    let body = `## 🤖 AI Code Review (${this.llm.name} (${modelName}))\n\n`;
+    // --------------------------------
 
-    const categoryEmoji: Record<string, string> = {
-      bug: '🐛',
-      security: '🔒',
-      performance: '⚡',
-      style: '🎨',
-      'best-practice': '✨'
-    };
+    body += `Found ${findings.length} issue${findings.length > 1 ? 's' : ''}. Severity breakdown:\n\n`;
 
-    let body = `## 🤖 AI Code Review (${this.llm.getModelName()})\n\n`;
-    body += `Found ${findings.length} issue${findings.length > 1 ? 's' : ''}:\n\n`;
+    // Group findings by severity and category for the summary
+    const highFindings = findings.filter(f => f.severity === 'high');
+    const mediumFindings = findings.filter(f => f.severity === 'medium');
 
-    const comments: any[] = [];
-
-    for (const finding of findings) {
-      const emoji = `${severityEmoji[finding.severity]} ${categoryEmoji[finding.category] || '📌'}`;
-      
-      if (finding.line) {
-        comments.push({
-          path: finding.filename,
-          line: finding.line,
-          body: `${emoji} **${finding.severity.toUpperCase()}** - ${finding.category}\n\n${finding.message}\n\n💡 **Suggestion:** ${finding.suggestion}`
-        });
-      }
-      
-      body += `### ${emoji} ${finding.filename}`;
-      if (finding.line) body += ` (line ${finding.line})`;
-      body += `\n**Issue:** ${finding.message}\n**Fix:** ${finding.suggestion}\n\n`;
+    if (highFindings.length > 0) {
+      body += `### 🔴 High Priority (${highFindings.length})\n`;
+      highFindings.forEach((f, i) => {
+        body += `* [${f.category.toUpperCase()}] **${f.filename}${f.line ? `:${f.line}` : ''}**: ${f.message}\n`;
+      });
+      body += '\n';
     }
 
-    try {
-      await context.octokit.pulls.createReview({
-        owner,
-        repo,
-        pull_number: prNumber,
-        commit_id: commitSha,
-        body,
-        event: 'COMMENT',
-        comments: comments.slice(0, 30)
+    if (mediumFindings.length > 0) {
+      body += `### 🟡 Medium Priority (${mediumFindings.length})\n`;
+      mediumFindings.forEach((f, i) => {
+        body += `* [${f.category.toUpperCase()}] **${f.filename}${f.line ? `:${f.line}` : ''}**: ${f.message}\n`;
       });
-      
-      console.log(`✅ Posted review with ${findings.length} findings`);
-    } catch (error) {
-      console.error('Error posting review:', error);
-      await context.octokit.issues.createComment({
-        owner,
-        repo,
-        issue_number: prNumber,
-        body
-      });
+      body += '\n';
     }
+
+    // Prepare comments for line-by-line review
+    const comments = findings.map(f => ({
+      path: f.filename,
+      position: f.line || 1, // Default to line 1 if line number is missing
+      body: `**[${f.severity.toUpperCase()} ${f.category.toUpperCase()}]** ${f.message}\n\n*Suggestion*: ${f.suggestion}`
+    }));
+    
+    // Post the detailed review
+    await context.octokit.pulls.createReview({
+      owner,
+      repo: repoName,
+      pull_number: prNumber,
+      commit_id: sha,
+      body: body,
+      event: highFindings.length > 0 ? 'REQUEST_CHANGES' : 'COMMENT',
+      comments: comments
+    });
   }
 }
