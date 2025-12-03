@@ -42,13 +42,11 @@ export interface Trigger {
 export class ConfigLoader {
   private config: AgentConfig | null = null;
 
-  constructor(private configPath: string = './.github/agent-workflow.yml') {
-    // Manually define __filename and __dirname for ES Module compatibility
+  constructor(private configPath: string = '.github/agent-workflow.yml') {
     const __filename = url.fileURLToPath(import.meta.url);
     const __dirname = path.dirname(__filename);
-    
-    // Resolve config path relative to the config-loader file
-    this.configPath = path.resolve(__dirname, '..', '..', this.configPath);
+    // Go up ONE level: src/ -> pedal/
+    this.configPath = path.join(__dirname, '..', this.configPath);
   }
 
   /**
