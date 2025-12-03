@@ -1,5 +1,5 @@
 name: PR Review Agent
-url: https://github.com/ForestMars/pedal2
+url: https://github.com/ForestMars/devi
 hook_attributes:
   url: https://smee.io/soupchannel
 description: Automated AI code review for pull requests
