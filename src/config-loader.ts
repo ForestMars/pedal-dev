@@ -93,6 +93,10 @@ export class ConfigLoader {
   private checkModelAvailability(providerName: string, modelName: string, providerConfig: ProviderConfig): boolean {
     // Check if the model is explicitly listed in the provider config's 'models' array.
     // If we assume the agent workflow config lists ALL available models, this is a sufficient check.
+    console.log(`[DEBUG] Checking model: "${modelName}"`);
+    console.log(`[DEBUG] Available models:`, providerConfig.models);
+    console.log(`[DEBUG] Includes check:`, providerConfig.models.includes(modelName));
+  
     if (providerConfig.models.includes(modelName)) {
         return true;
     }
