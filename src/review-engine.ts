@@ -81,6 +81,10 @@ export class ReviewEngine { // FIX: Export is here
   }
 
   private filterFiles(files: any[]): PRFile[] {
+    const isFilteringEnabled = process.env.FILTER_LARGE_FILES === 'yes';
+    const MAX_FILE_CHANGES = 800;
+    const MAX_FILES = 15; 
+
     const ignorePatterns = [
       /\.gitignore$/,
       /\.lock$/,
@@ -99,8 +103,11 @@ export class ReviewEngine { // FIX: Export is here
       /^CHANGELOG/i
     ];
 
-    const MAX_FILE_CHANGES = 800;
-    const MAX_FILES = 15; 
+    if (isFilteringEnabled) {
+        console.log(`\nFILE FILTERING: (STRICT MODE - Max changes: ${MAX_FILE_CHANGES})`);
+    } else {
+        console.log(`\nFILE FILTERING: (NORMAL MODE - Max changes: ${MAX_FILE_CHANGES})`);
+    }
 
     console.log(`\nFILE FILTERING:`);
     console.log(`Total files in PR: ${files.length}`);
