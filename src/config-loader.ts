@@ -74,12 +74,21 @@ export class ConfigLoader {
 
   // Load and parse the YAML config file
   load(): AgentConfig {
+    console.log(`[DEBUG:Config] 5. Attempting to load YAML from: ${this.configPath}`);
+    if (!fs.existsSync(this.configPath)) {
+      throw new Error(`Configuration file not found at: ${this.configPath}`);
+    }
+
     if (this.config) {
       return this.config;
     }
     try {
       const fileContents = fs.readFileSync(this.configPath, 'utf8');
       this.config = yaml.parse(fileContents);
+      console.log(`[DEBUG:Config] 6. YAML file successfully parsed.`);
+
+      const ignorePatterns = this.getIgnorePatterns();
+      console.log(`[DEBUG:Config] 7. Ignore patterns loaded. Count: ${ignorePatterns.length}`);
       
       if (!this.config) {
         throw new Error('Failed to parse config file');
