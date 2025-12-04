@@ -51,13 +51,9 @@ export class ConfigLoader {
     // Go up ONE level: src/ -> pedal/
     this.configPath = path.join(__dirname, '..', this.configPath);
   }
-
   private loadEnvironmentVariables(): void {
-    // Load standard environment variables and secrets
-
-    // Load agent-specific configuration eg filter-large-files
     const envAgentPath = path.join(this.configPath, 'env');
-    
+
     try {
         dotenv.config({ path: envAgentPath, override: true });
         console.log(`✅ Loaded agent configuration from ${envAgentPath}`);
@@ -65,15 +61,11 @@ export class ConfigLoader {
         console.warn(`Could not load ${envAgentPath}. Proceeding without it.`);
     }
   }
-
-  /**
-   * Load and parse the YAML config file
-   */
+  // Load and parse the YAML config file
   load(): AgentConfig {
     if (this.config) {
       return this.config;
     }
-
     try {
       const fileContents = fs.readFileSync(this.configPath, 'utf8');
       this.config = yaml.parse(fileContents);
@@ -93,10 +85,7 @@ export class ConfigLoader {
       throw new Error(`Failed to load config: ${error.message}`);
     }
   }
-
-  /**
-   * Get a specific agent configuration by name
-   */
+  // Get agent configuration by name
   getAgent(agentName: string): Agent | null {
     const config = this.load();
     return config.agents[agentName] || null;
@@ -279,6 +268,36 @@ export class ConfigLoader {
     return true;
   }
 
+  /**
+   * Loads the list of file ignore patterns from config/ignore-files.txt
+   * @returns An array of RegExp objects
+   */
+  public getIgnorePatterns(): RegExp[] {
+    const filePath = path.join(this.configPath, 'ignore-files.txt');
+    
+    try {
+      const content = fs.readFileSync(filePath, 'utf8');
+      
+      // Split the content by newline, filter out empty lines/comments, and map to RegExp
+      const patterns = content
+        .split(/\r?\n/)
+        .map(line => line.trim())
+        .filter(line => line.length > 0 && !line.startsWith('#'))
+        .map(pattern => new RegExp(pattern));
+        
+      console.log(`✅ Loaded ${patterns.length} file ignore patterns from ${filePath}`);
+      // Return the patterns found in the file
+      return patterns;
+    } catch (e: any) {
+      console.warn(`Could not load ignore patterns from ${filePath}: ${e.message}. Using an empty list.`);
+      
+      // FIX: Return an empty array as the fallback. 
+      // This respects the user's intent if the file exists but is empty, 
+      // or if they wish to clear all defaults.
+      return []; 
+    }
+  }
+  
   /**
    * Get current sprint number
    */
