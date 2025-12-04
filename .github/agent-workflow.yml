@@ -88,12 +88,30 @@ agents:
   pr-review:
     model: "ollama:qwen2.5-coder:7b"
     # model: "ollama:deepseek-r1:latest"
+    max_output_tokens: 9999
     triggers:
       - event: "pull_request.opened"
       - event: "pull_request.synchronize"
     actions:
       - review_code
       - post_review_comment
+
+  auto-fix-pr:
+    model: ollama:qwen2.5-coder:7b 
+    context: |
+      You are an expert software engineer responsible for fixing bugs and addressing review comments.
+      Your task is to analyze the provided PR diff, the original code, and the review comments.
+      You MUST generate a single, complete patch file (`fix.patch`) that addresses ALL issues found in the review comments.
+      Do not generate any commentary or explanation. Only output the patch file contents.
+    triggers:
+      - event: issue_comment
+        conditions:
+          # Trigger when a comment is added and the user is the bot itself
+          sender: remediation-bot # 
+          action: created
+    actions:
+      - handler: create-fix-branch
+      - handler: push-and-open-pr    
 
 # Validation Rules
 validation_rules:
