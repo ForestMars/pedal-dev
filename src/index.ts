@@ -51,6 +51,7 @@ export default (app: Probot) => {
     try {
       // Note: llmProvider is created and defined *here* (inside this scope)
       const llmProvider = configLoader.createProvider('pr-review');
+      llmProvider.maxOutputTokens = 9999;
       const reviewEngine = new ReviewEngine(llmProvider);
       
       // Optional: You can keep this log for confirmation on every PR event, 
