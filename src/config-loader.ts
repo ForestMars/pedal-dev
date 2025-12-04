@@ -1,4 +1,5 @@
 // src/config-loader.ts
+import * as dotenv from 'dotenv';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as url from 'url';
@@ -43,10 +44,26 @@ export class ConfigLoader {
   private config: AgentConfig | null = null;
 
   constructor(private configPath: string = '.github/agent-workflow.yml') {
+    this.configPath = path.resolve(process.cwd(), 'config');
+    this.loadEnvironmentVariables();
     const __filename = url.fileURLToPath(import.meta.url);
     const __dirname = path.dirname(__filename);
     // Go up ONE level: src/ -> pedal/
     this.configPath = path.join(__dirname, '..', this.configPath);
+  }
+
+  private loadEnvironmentVariables(): void {
+    // Load standard environment variables and secrets
+
+    // Load agent-specific configuration eg filter-large-files
+    const envAgentPath = path.join(this.configPath, 'env');
+    
+    try {
+        dotenv.config({ path: envAgentPath, override: true });
+        console.log(`✅ Loaded agent configuration from ${envAgentPath}`);
+    } catch (e) {
+        console.warn(`Could not load ${envAgentPath}. Proceeding without it.`);
+    }
   }
 
   /**
