@@ -10,7 +10,6 @@ const MAX_FILE_SIZE_KB = 512;
 const MAX_CHANGES_PER_FILE = 999;
 const MAX_FILES_TO_REVIEW = 19;
 
-
 interface PRFile {
   sha: string;
   filename: string;
@@ -48,9 +47,6 @@ export class ReviewEngine {
     this.configLoader = new ConfigLoader();
   }
 
-  /**
-   * Main function to review a Pull Request.
-   */
   async reviewPR(context: Context, pr: any, repo: any): Promise<void> {
     const owner = repo.owner.login;
     const repoName = repo.name;
@@ -109,9 +105,6 @@ export class ReviewEngine {
     }
   }
 
-  /**
-   * Filters and limits the files to be reviewed.
-   */
   private filterFiles(files: any[]): PRFile[] {
     const ignorePatterns = [
       /\.gitignore$/,
@@ -124,7 +117,6 @@ export class ReviewEngine {
       /dist\//,
       /build\//,
       /node_modules\//,
-      // Documentation files - don't send to code review
       /^README/i,
       /\.md$/,
       /\.rst$/,
@@ -132,11 +124,10 @@ export class ReviewEngine {
       /^CHANGELOG/i
     ];
 
-// ANSI Color Codes
     const COLOR_RESET = '\x1b[0m';
     const COLOR_RED = '\x1b[31m';
     const COLOR_GREEN = '\x1b[32m';
-    const COLOR_YELLOW = '\x1b[33m'; // Used for warnings
+    const COLOR_YELLOW = '\x1b[33m';
 
     const MAX_FILE_CHANGES = 800;
     const MAX_FILES = 15;
@@ -153,20 +144,17 @@ export class ReviewEngine {
 
     const filtered = files.filter(f => {
       if (ignorePatterns.some(pattern => pattern.test(f.filename))) {
-        // Log IGNORED in RED
         console.log(`   ✗ ${COLOR_RED}IGNORED${COLOR_RESET}: ${f.filename} (matched ignore pattern)`);
         stats.ignored++;
         return false;
       }
       
       if (f.changes >= MAX_FILE_CHANGES) {
-        // Log TOO LARGE in RED
         console.log(`   ✗ ${COLOR_RED}TOO LARGE${COLOR_RESET}: ${f.filename} (${f.changes} changes, limit: ${MAX_FILE_CHANGES})`);
         stats.tooLarge++;
         return false;
       }
-      
-      // Log INCLUDED in GREEN
+
       console.log(`   ✓ ${COLOR_GREEN}INCLUDED${COLOR_RESET}: ${f.filename} (${f.changes} changes)`);
       return true;
     });
@@ -175,7 +163,6 @@ export class ReviewEngine {
     stats.reviewed = result.length;
 
     if (filtered.length > MAX_FILES) {
-      // Log truncation warning in YELLOW
       console.log(`${COLOR_YELLOW}   ⚠️  WARNING: Truncated to first ${MAX_FILES} files (had ${filtered.length})${COLOR_RESET}`);
     }
 
@@ -185,10 +172,6 @@ export class ReviewEngine {
 
     return result;
   }
-
-  /**
-   * Generates the review by calling the LLM.
-   */
 
   private async generateReview(pr: any, files: PRFile[]): Promise<ReviewFinding[]> {
     const BATCH_SIZE = 1; 
@@ -209,10 +192,7 @@ export class ReviewEngine {
       console.log(`📏 Batch prompt: ${prompt.length} chars`);
       
       try {
-        // --- CRITICAL FIX: Pass a configuration object with a high max_tokens value. ---
-        // This forces the LLM to allocate enough budget to write out a large JSON array (10-15 findings).
         const response = await this.llm.generateReview(prompt, { max_tokens: 3000 });
-        // -------------------------------------------------------------------------------
         console.log(`✓ Got response (${response.length} chars)`);
         
         const findings = this.parseReviewResponse(response);
@@ -221,7 +201,6 @@ export class ReviewEngine {
         allFindings.push(...findings);
       } catch (error) {
         console.error(`❌ Error in batch ${batchNum}:`, error);
-        // Continue with next batch instead of failing entirely
       }
     }
     
@@ -229,9 +208,6 @@ export class ReviewEngine {
     return allFindings;
   }
 
-  /**
-   * Builds the review prompt by injecting PR data into the template.
-   */
   private buildReviewPrompt(pr: any, files: PRFile[]): string {
     const template = this.loadPromptTemplate();
     
@@ -252,9 +228,6 @@ ${f.patch || 'No diff available'}
       .replace('[FILE_CONTEXT]', fileContext);
   }
 
-  /**
-   * Loads the review prompt template from a file.
-   */
   private loadPromptTemplate(): string {
     const agentContext = this.configLoader.getAgent('pr-review')?.context;
     if (agentContext) {
@@ -271,74 +244,45 @@ ${f.patch || 'No diff available'}
     }
   }
 
-  /**
-   * Parses the JSON response from the LLM.
-   */
-  private parseReviewResponse(response: string): ReviewFinding[] {
-    
-    let cleanResponse = response.trim();
-    
-    // 1. Initial cleanup: remove common markdown fences
-    cleanResponse = cleanResponse.replace(/^```(json)?\s*/i, '').replace(/\s*```$/, '');
+  private parseReviewResponse(rawResponse: string): ReviewFinding[] {
+    let jsonString = rawResponse.trim();
 
-    // 2. Find the JSON array boundaries (The Ultimate Guardrail)
-    const firstBracket = cleanResponse.indexOf('[');
-    const lastBracket = cleanResponse.lastIndexOf(']');
-
-    if (firstBracket === -1 || lastBracket === -1 || lastBracket < firstBracket) {
-        // This proves the LLM failed to output a recognizable JSON array.
-        console.error(`🔴 PARSE FAIL: Cannot find valid array boundaries in response.`);
-        console.error(`   RAW RESPONSE SNIPPET: "${response.trim().substring(0, 200)}"`);
-        return []; 
-    }
-    
-    // 3. Extract ONLY the content between the first [ and last ]
-    let jsonContent = cleanResponse.substring(firstBracket, lastBracket + 1); 
-
-    // --- DEBUG LOG B: Check if the Guardrail isolated the array correctly ---
-    console.log(`[DEBUG_PARSE_B] Guardrail Array Content: "${jsonContent.substring(0, 100)}"`);
-    // ------------------------------------------------------------------------
-
-    // 4. Clean up potential trailing commas (common LLM error)
-    try {
-        if (jsonContent.endsWith(',]')) {
-             jsonContent = jsonContent.slice(0, -2) + ']';
-        }
-    } catch (e) {
-        // Ignore this if it fails
-    }
-
-    try {
-      const findings = JSON.parse(jsonContent);
-      
-      // 5. Final validation: Ensure the parsed result is actually an array
-      if (Array.isArray(findings)) {
-          return findings;
+    if (jsonString.startsWith('```')) {
+      const firstFenceEnd = jsonString.indexOf('\n');
+      if (firstFenceEnd !== -1) {
+        jsonString = jsonString.substring(firstFenceEnd).trim();
       }
-      
-      console.error(`🔴 PARSE FAIL: JSON was valid but did not result in an array.`);
+    }
+    
+    if (jsonString.endsWith('```')) {
+      const lastFenceStart = jsonString.lastIndexOf('```');
+      if (lastFenceStart !== -1) {
+        jsonString = jsonString.substring(0, lastFenceStart).trim();
+      }
+    }
+
+    const start = jsonString.indexOf('[');
+    const end = jsonString.lastIndexOf(']');
+
+    if (start === -1 || end === -1 || start >= end) {
+      console.error(`🔴 PARSE FAIL: Cannot find valid array boundaries in response.`);
+      console.error(`RAW RESPONSE SNIPPET: ${jsonString.substring(0, 500)}`);
       return [];
-      
-    } catch (error: any) {
-      // --- DEBUG LOG C: Log the exact string that failed JSON.parse() ---
-      console.error(`❌ FAILED TO PARSE JSON. Error: ${error.message}`);
-      console.error(`[DEBUG_PARSE_C] Failed String: "${jsonContent.substring(0, 100)}"`);
-      // --------------------------------------------------------------------
-      return []; 
+    }
+    
+    const arrayContent = jsonString.substring(start, end + 1);
+
+    console.log(`[DEBUG_PARSE_B] Guardrail Array Content: ${arrayContent.substring(0, 100)}...`);
+
+    try {
+      return JSON.parse(arrayContent) as ReviewFinding[];
+    } catch (error) {
+      console.error('🔴 PARSE FAIL: JSON syntax error after guardrail applied.', error);
+      console.error(`[DEBUG_PARSE_C] Failed String: ${arrayContent.substring(0, 500)}...`);
+      return [];
     }
   }
 
-  /**
-   * Posts the final review summary and line comments.
-   */
-  // src/review-engine.ts (Replacing postReview method)
-
-  /**
-   * Posts the final review summary and line comments.
-   */
-  /**
-   * Posts the final review summary and line comments.
-   */
   private async postReview(
     context: Context,
     owner: string,
@@ -391,9 +335,8 @@ ${f.patch || 'No diff available'}
       body += '\n';
     }
 
-    // --- CRITICAL VALIDATION AND FILTERING ---
     const comments = findings
-      .filter(f => f.line !== undefined) // 1. Must have a line number
+      .filter(f => f.line !== undefined)
       .filter(f => {
         const line = f.line!;
         const patch = filePatches.get(f.filename);
@@ -403,15 +346,11 @@ ${f.patch || 'No diff available'}
             return false;
         }
 
-        // 2. Strict Check: Ensure line number is > 0
         if (line <= 0) {
             console.warn(`[VALIDATION_FAIL] Skipping finding for ${f.filename}:${line}. Line number is invalid.`);
             return false;
         }
 
-        // 3. Containment Check: Search for the line number in the diff hunk ranges.
-        // This validates if the line number falls within any added/modified hunk range in the patch.
-        // The regex captures the starting line number and the number of lines added (+100,5 -> [1]=100, [2]=5)
         const hunkRegex = /@@ -\d+,\d+ \+(\d+),(\d+) @@/g;
         let match;
         let isValidHunkLine = false;
@@ -419,8 +358,7 @@ ${f.patch || 'No diff available'}
         while ((match = hunkRegex.exec(patch)) !== null) {
             const startLine = parseInt(match[1], 10);
             const numLines = parseInt(match[2], 10);
-            
-            // Check if the finding line is between the hunk start line and (start + number of lines - 1)
+
             if (line >= startLine && line < startLine + numLines) {
                 isValidHunkLine = true;
                 break;
@@ -441,9 +379,7 @@ ${f.patch || 'No diff available'}
         side: 'RIGHT' as const,
         body: `**[${f.severity.toUpperCase()} ${f.category.toUpperCase()}]** ${f.message}\n\n*Suggestion*: ${f.suggestion}`
       }));
-    // ------------------------------------------
 
-    // If no valid inline comments, just post summary
     if (comments.length === 0) {
       await context.octokit.issues.createComment({
         owner,
@@ -453,8 +389,7 @@ ${f.patch || 'No diff available'}
       });
       return;
     }
-    
-    // Post the review with the filtered, valid comments
+
     await context.octokit.pulls.createReview({
       owner,
       repo: repoName,
