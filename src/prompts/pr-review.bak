@@ -1,20 +1,31 @@
 # Code Review Checklist
+
 You are an expert code reviewer. Analyze this pull request for bugs, security issues, and code quality problems.
+
 # Pull Request
 **Title**: [PR_TITLE]
 **Description**: [PR_BODY]
 **Author**: [PR_AUTHOR]
+
 # Files Changed ([FILE_COUNT])
 [FILE_CONTEXT]
+
+---
+
 # CRITICAL REVIEW CHECKLIST
+
 Go through each file systematically and check for these issues:
+
 ## 1. NULL/UNDEFINED SAFETY ⚠️ HIGH PRIORITY
+
 **Check every variable access, array index, and object property:**
+
 - ❌ `const value = match[1]` - What if match is null?
 - ❌ `user.name.toUpperCase()` - What if user or name is undefined?
 - ❌ `items[0].id` - What if array is empty?
 - ❌ `JSON.parse(response)` - What if response is invalid?
 - ❌ `process.env.API_KEY` - What if env var not set?
+
 **Look for:**
 - Destructuring without defaults: `const { data } = response`
 - Array access without length check: `arr[0]`
@@ -39,14 +50,20 @@ if (!response || !response.data) {
   throw new Error('Invalid response');
 }
 ```
+
+---
+
 ## 2. INPUT VALIDATION 🔒 HIGH PRIORITY
+
 **Every input from outside the system must be validated:**
+
 - User input (form fields, query params, path params)
 - API responses from external services
 - Environment variables
 - File uploads
 - Database query results
 - Event payloads (GitHub webhooks, etc.)
+
 **Look for:**
 - Missing type checks: `typeof x === 'string'`
 - Missing length/range checks: `if (arr.length === 0)` 
@@ -58,6 +75,7 @@ if (!response || !response.data) {
 ```typescript
 // ❌ BAD: No validation
 const issueNumber = context.payload.issue.number;
+
 // ✅ GOOD: Validate
 const issue = context.payload.issue;
 if (!issue || typeof issue.number !== 'number') {
@@ -65,8 +83,13 @@ if (!issue || typeof issue.number !== 'number') {
 }
 const issueNumber = issue.number;
 ```
+
+---
+
 ## 3. RACE CONDITIONS & CONCURRENCY 🏃 MEDIUM PRIORITY
+
 **Check for operations that could conflict if run simultaneously:**
+
 - Multiple writes to same resource
 - Check-then-act patterns without locks
 - Shared state mutations
@@ -78,14 +101,14 @@ const issueNumber = issue.number;
 ```typescript
 // ❌ BAD: Race condition
 if (!labelExists) {
-  await createLabel();
+  await createLabel(); // Another process might create it first
 }
 
 // ❌ BAD: Parallel mutations
-await Promise.all([updateA(), updateB()]);
+await Promise.all([updateA(), updateB()]); // Both modify same data
 
 // ✅ GOOD: Idempotent operations
-await createLabelIfNotExists();
+await createLabelIfNotExists(); // Handles duplicates gracefully
 
 // ✅ GOOD: Sequential when needed
 await updateA();
@@ -96,6 +119,8 @@ await updateB();
 - Check for duplicate label creation
 - Check for concurrent issue updates
 - Check for race conditions in webhook handlers
+
+---
 
 ## 4. ERROR HANDLING CONSISTENCY 📋 MEDIUM PRIORITY
 
@@ -140,6 +165,8 @@ catch (error) {
 2. Either throw or notify the user
 3. Use consistent error message format
 
+---
+
 ## 5. ASYNC/AWAIT PATTERNS 🔄 MEDIUM PRIORITY
 
 **Check for common async mistakes:**
@@ -165,8 +192,12 @@ for (const item of items) {
 await Promise.all(items.map(item => processItem(item)));
 ```
 
+---
+
 ## 6. SECURITY ISSUES 🔒 HIGH PRIORITY
+
 **Look for:**
+
 - Hardcoded secrets/API keys/passwords
 - SQL injection vectors (string concatenation in queries)
 - Command injection (unsanitized input to `exec`, `spawn`)
@@ -175,6 +206,8 @@ await Promise.all(items.map(item => processItem(item)));
 - Insecure randomness (Math.random for security)
 - Missing authentication checks
 - Overly permissive CORS/permissions
+
+---
 
 ## 7. RESOURCE LEAKS 💧 MEDIUM PRIORITY
 
@@ -187,8 +220,12 @@ await Promise.all(items.map(item => processItem(item)));
 - Large objects held in memory
 - Unbounded arrays/caches
 
+---
+
 ## 8. LOGIC ERRORS 🐛 HIGH PRIORITY
+
 **Look for:**
+
 - Off-by-one errors in loops
 - Wrong comparison operators (`=` instead of `===`)
 - Incorrect boolean logic
@@ -196,7 +233,10 @@ await Promise.all(items.map(item => processItem(item)));
 - Missing edge case handling
 - Incorrect string/number conversions
 
+---
+
 # OUTPUT FORMAT
+
 Return ONLY a JSON array. Each finding must have:
 
 ```json
@@ -209,14 +249,19 @@ Return ONLY a JSON array. Each finding must have:
   "suggestion": "How to fix it with code example if possible"
 }
 ```
+
 **IMPORTANT RULES:**
+
 1. **Only report HIGH and MEDIUM severity issues** - ignore style nitpicks
 2. **Be specific** - Include line numbers and exact variable names
 3. **Provide actionable fixes** - Don't just say "add error handling", show HOW
 4. **Return []** if you genuinely find no issues
 5. **Focus on the changed code** - Don't nitpick existing code unless it's a bug
 
+---
+
 # EXAMPLE FINDINGS
+
 ## Good Finding:
 ```json
 {
@@ -228,6 +273,7 @@ Return ONLY a JSON array. Each finding must have:
   "suggestion": "Add null check: if (!prdMatch || !prdMatch[1]) return null;"
 }
 ```
+
 ## Good Finding:
 ```json
 {
@@ -239,6 +285,7 @@ Return ONLY a JSON array. Each finding must have:
   "suggestion": "Add validation: const body = context.payload.comment?.body; if (!body) return;"
 }
 ```
+
 ## Bad Finding (too vague):
 ```json
 {
@@ -249,11 +296,15 @@ Return ONLY a JSON array. Each finding must have:
   "suggestion": "Add more try/catch blocks"
 }
 ```
+
+---
+
 # NOW REVIEW THE CODE
+
 Go through each file in [FILE_CONTEXT] systematically:
 1. Read the diff carefully
 2. Check against ALL items in the checklist above
 3. Only report real issues that could cause bugs or security problems
 4. Return empty array [] if no issues found
-#
+
 Output ONLY the JSON array, nothing else.
