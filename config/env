@@ -1,0 +1,4 @@
+# Controls whether ReviewEngine should aggressively filter out files 
+# with high change counts (to manage LLM token limits).
+# Set to 'yes' to enable strict filtering.
+FILTER_LARGE_FILES=yes
