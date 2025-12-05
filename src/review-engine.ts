@@ -90,6 +90,7 @@ export class ReviewEngine { // FIX: Export is here
     } else {
         console.log(`\nFILE FILTERING: (NORMAL MODE - Max changes: ${MAX_FILE_CHANGES})`);
     }
+    const ignorePatterns = this.configLoader.getIgnorePatterns();
 
     console.log(`\nFILE FILTERING:`);
     console.log(`Total files in PR: ${files.length}`);
