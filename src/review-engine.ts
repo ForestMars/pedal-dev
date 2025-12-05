@@ -179,7 +179,7 @@ ${f.patch || 'No diff available'}
         return agentContext;
     }
 
-    const promptPath = path.resolve(process.cwd(), 'src/prompts/pr-review.md');
+    const promptPath = this.configLoader.getPromptFilePath(agent);
     try {
       return fs.readFileSync(promptPath, 'utf8');
     } catch (e: any) {
