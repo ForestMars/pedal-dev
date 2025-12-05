@@ -18,6 +18,7 @@ llm:
         - "qwen2.5-coder:7b"
         - "qwen2.5-coder:14b"
         - "qwen2.5-coder:32b"
+        - "qwen-coder:pedal"
         - "deepseek-r1:latest"
         - "codellama"
     
@@ -84,7 +85,7 @@ agents:
       - create_pr
       - link_pr_to_issue
       
-  # Reviews code in PRs (what we built)
+  # Reviews code in PRs
   pr-review:
     model: "ollama:qwen-coder:pedal"
     # model: "ollama:qwen2.5-coder:7b"
