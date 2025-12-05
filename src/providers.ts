@@ -35,7 +35,13 @@ export class OllamaProvider implements LLMProvider {
           temperature: 0.3,
           num_predict: this.maxOutputTokens, // Uses configured value (4096)
           // stop: ["\n]"] // CRITICAL FIX for Qwen truncation (stops output after closing JSON array)
-          stop: ["\n```", "```", "]"]
+          // stop: ["\n```", "```", "]"]
+          stop: [
+            "\n```", // Stop when closing the code fence
+            "```",  // Stop when closing the code fence
+            "}]",   // Stop immediately after closing an object and closing the array (e.g., ...suggestion": "fix"}]} )
+            "]"     // Stop immediately after the final array brace
+          ]
         }
       })
     });
