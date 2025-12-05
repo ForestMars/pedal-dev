@@ -1,4 +1,5 @@
 // src/config-loader.ts
+import * as dotenv from 'dotenv';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as url from 'url';
@@ -41,25 +42,86 @@ export interface Trigger {
 
 export class ConfigLoader {
   private config: AgentConfig | null = null;
-
-  constructor(private configPath: string = '.github/agent-workflow.yml') {
-    const __filename = url.fileURLToPath(import.meta.url);
-    const __dirname = path.dirname(__filename);
-    // Go up ONE level: src/ -> pedal/
-    this.configPath = path.join(__dirname, '..', this.configPath);
+  private configDirRoot: string;
+  private configPath: string; 
+  private configFile: string = 'agent-workflow.yml';
+  
+  constructor(private baseDir: string = 'config') {
+    this.configDirRoot = path.resolve(process.cwd(), baseDir);
+    this.configPath = path.join(this.configDirRoot, this.configFile);
+    this.loadEnvironmentVariables();
+    this.verifyPromptFiles();
   }
 
   /**
-   * Load and parse the YAML config file
+   * @param agentName The name of the agent.
+   * @returns The full file system path to the prompt file.
    */
+  private calculatePromptPath(agentName: string): string {
+    return path.join(this.configDirRoot, 'prompts', `${agentName}.md`);
+  }
+
+  /**
+   * @param agentName The name of the agent (e.g., 'pr-review').
+   * @returns The full file system path to the expected prompt file.
+   */
+  public getPromptFilePath(agentName: string): string {
+    return this.calculatePromptPath(agentName);
+  }
+  // ---------------------------------------------
+
+  private verifyPromptFiles(): void {
+    const config = this.load();
+    const missingPrompts: string[] = [];
+    
+    for (const [agentName, agent] of Object.entries(config.agents)) {
+      if (agent.context) {
+        console.log(`⚠️ Agent '${agentName}' using inline context from config`);
+        continue;
+      }
+
+      console.log('👋👋👋 dir root is', this.configDirRoot );
+      // REFACTORED: Use the new private method
+      const promptPath = this.calculatePromptPath(agentName);
+      console.log('👋👋👋 Prompt Path is', promptPath );
+      if (fs.existsSync(promptPath)) {
+        console.log(`✅ Agent '${agentName}' prompt file found: ${promptPath}`);
+      } else {
+        console.warn(`⚠️  Agent '${agentName}' prompt file missing: ${promptPath}`);
+        missingPrompts.push(agentName);
+      }
+    }
+    if (missingPrompts.length > 0) {
+      console.warn(`⚠️  ${missingPrompts.length} agent(s) missing prompt files. Will use fallback prompts.`);
+    }
+  }
+
+  private loadEnvironmentVariables(): void {
+    const envAgentPath = path.join(this.configDirRoot, '.env.agent'); 
+    try {
+        dotenv.config({ path: envAgentPath, override: true });
+        console.log(`✅ Loaded agent configuration from ${envAgentPath}`);
+    } catch (e) {
+        console.warn(`Could not load ${envAgentPath}. Proceeding without it.`);
+    }
+  }
+
   load(): AgentConfig {
+    console.log(`[DEBUG:Config] 5. Attempting to load YAML from: ${this.configPath}`);
+    if (!fs.existsSync(this.configPath)) {
+      throw new Error(`Configuration file not found at: ${this.configPath}`);
+    }
+
     if (this.config) {
       return this.config;
     }
-
     try {
       const fileContents = fs.readFileSync(this.configPath, 'utf8');
       this.config = yaml.parse(fileContents);
+      console.log(`[DEBUG:Config] 6. YAML file successfully parsed.`);
+
+      const ignorePatterns = this.getIgnorePatterns();
+      console.log(`[DEBUG:Config] 7. Ignore patterns loaded. Count: ${ignorePatterns.length}`);
       
       if (!this.config) {
         throw new Error('Failed to parse config file');
@@ -77,22 +139,37 @@ export class ConfigLoader {
     }
   }
 
-  /**
-   * Get a specific agent configuration by name
-   */
   getAgent(agentName: string): Agent | null {
     const config = this.load();
     return config.agents[agentName] || null;
   }
 
-  // --- MODEL VALIDATION SIMULATION (Conceptual, replace with API call if necessary) ---
-  /**
-   * Checks model availability. In a real app, this would use an API call 
-   * (e.g., Ollama's /api/show). For the current debugging state, we simplify.
-   */
+  public getAgentContext(agentName: string): string {
+    console.log(`[DEBUG:getAgentContext] Called for agent: ${agentName}`);
+    
+    const agentContext = this.getAgent(agentName)?.context;
+    if (agentContext) {
+      console.log(`[DEBUG:getAgentContext] Using inline context from config`);
+      return agentContext;
+    }
+
+    const promptPath = this.calculatePromptPath(agentName);
+    console.log(`[DEBUG:getAgentContext] Attempting to load from: ${promptPath}`);
+    console.log(`[DEBUG:getAgentContext] File exists: ${fs.existsSync(promptPath)}`);
+    
+    try {
+      const content = fs.readFileSync(promptPath, 'utf8');
+      console.log(`[DEBUG:getAgentContext] Successfully loaded ${content.length} chars`);
+      return content;
+    } catch (e: any) {
+      console.error(`[DEBUG:getAgentContext] FAILED to load: ${e.message}`);
+      console.error(`[DEBUG:getAgentContext] Error code: ${e.code}`);
+      console.warn(`[ConfigError] Using default prompt - Could not load context from ${promptPath}: ${e.message}`);
+      return `# PR Review Instructions\nFocus on the following areas:\n1. Security\n2. Bugs\n3. Performance\n\nReturn ONLY a JSON array.\n[FILE_CONTEXT]`;
+    }
+  }
+
   private checkModelAvailability(providerName: string, modelName: string, providerConfig: ProviderConfig): boolean {
-    // Check if the model is explicitly listed in the provider config's 'models' array.
-    // If we assume the agent workflow config lists ALL available models, this is a sufficient check.
     console.log(`[DEBUG] Checking model: "${modelName}"`);
     console.log(`[DEBUG] Available models:`, providerConfig.models);
     console.log(`[DEBUG] Includes check:`, providerConfig.models.includes(modelName));
@@ -101,15 +178,9 @@ export class ConfigLoader {
         return true;
     }
     
-    // NOTE: If the model is not in the list, it's considered unavailable for the harness.
     return false;
   }
-  // ----------------------------------------------------------------------------------
 
-  /**
-   * Create an LLM provider instance based on agent config
-   * This implements the centralized model fallback harness and logging.
-   */
   createProvider(agentName: string): LLMProvider {
     const config = this.load();
     const agent = this.getAgent(agentName);
@@ -118,12 +189,10 @@ export class ConfigLoader {
       throw new Error(`Agent not found: ${agentName}`);
     }
 
-    // Parse model string: "provider:model"
     const parts = agent.model.split(':');
     const hasProviderPrefix = parts.length > 1;
 
     const providerName = hasProviderPrefix ? parts[0] : config.llm.default_provider;
-    // Rejoin remaining parts to handle colons within the model name (e.g., qwen2.5-coder:14b)
     const requestedModelName = hasProviderPrefix ? parts.slice(1).join(':') : agent.model; 
 
     const providerConfig = config.llm.providers[providerName];
@@ -131,36 +200,30 @@ export class ConfigLoader {
       throw new Error(`Provider not found: ${providerName}`);
     }
     
-    // --- START: THE DRY AGENT HARNESS (Fallback and Logging) ---
     let finalModelName = requestedModelName;
     const defaultModelName = config.llm.default_model;
 
-    // 1. Check if the requested model is available (based on config list)
     if (!this.checkModelAvailability(providerName, requestedModelName, providerConfig)) {
         
-        // 2. Log the required console message
+        
         console.warn(`model [${requestedModelName}] not found for agent [${agentName}]. Falling back to default model [${defaultModelName}].`);
         
-        // 3. Set the final model name to the configured default
+        
         finalModelName = defaultModelName;
         
-        // Optional: Check if the fallback model is also listed as available
+        
         if (!this.checkModelAvailability(providerName, finalModelName, providerConfig)) {
-            // We still proceed, but the developer should be warned their fallback is also potentially bad
+            
             console.warn(`Warning: Fallback model [${finalModelName}] is also not listed as available for provider [${providerName}].`);
         }
     }
-    // --- END: THE DRY AGENT HARNESS ---
 
-    // Instantiate provider with the final, confirmed model name
     const providerInstance = this.instantiateProvider(providerName, finalModelName, providerConfig);
     
     return providerInstance;
   }
 
-  /**
-   * Create provider instance based on type
-   */
+
   private instantiateProvider(
     providerName: string, 
     modelName: string, 
@@ -235,9 +298,7 @@ export class ConfigLoader {
     return matchingAgents;
   }
 
-  /**
-   * Check if labels match trigger conditions
-   */
+
   private matchesConditions(conditions: Record<string, any>, labels: string[]): boolean {
     if (conditions.labels_all) {
       const required = conditions.labels_all as string[];
@@ -263,15 +324,37 @@ export class ConfigLoader {
   }
 
   /**
-   * Get current sprint number
+   * @returns An array of RegExp objects to be ignored
    */
+  public getIgnorePatterns(): RegExp[] {
+    const filePath = path.join(this.configDirRoot, 'ignore-files.txt');
+    
+    try {
+      const content = fs.readFileSync(filePath, 'utf8');
+      
+      const patterns = content
+        .split(/\r?\n/)
+        .map(line => line.trim())
+        .filter(line => line.length > 0 && !line.startsWith('#'))
+        .map(pattern => new RegExp(pattern));
+        
+      console.log(`✅ Loaded ${patterns.length} file ignore patterns from ${filePath}`);
+  
+      return patterns;
+    } catch (e: any) {
+      console.warn(`Could not load ignore patterns from ${filePath}: ${e.message}. Using an empty list.`);
+      
+      // FIX: Return an empty array as the fallback. 
+      return []; 
+    }
+  }
+
   getCurrentSprint(): number {
     const config = this.load();
     if (config.settings?.current_sprint) {
       return config.settings.current_sprint;
     }
     
-    // Default: calculate week of year
     const now = new Date();
     const start = new Date(now.getFullYear(), 0, 1);
     const diff = now.getTime() - start.getTime();

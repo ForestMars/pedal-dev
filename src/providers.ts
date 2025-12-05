@@ -4,15 +4,20 @@ export interface LLMProvider {
   name: string;
   getModelName(): string;
   generateReview(prompt: string): Promise<string>;
+  maxOutputTokens: number; // Centralized configuration for output limit
 }
 
 export class OllamaProvider implements LLMProvider {
   name = "Ollama";
+  public maxOutputTokens: number; // Property added
 
   constructor(
     private host: string,
-    private model: string
-  ) {}
+    private model: string,
+    maxOutputTokens: number = 4096 // Accepts configurable output limit
+  ) {
+    this.maxOutputTokens = maxOutputTokens;
+  }
 
   getModelName(): string {
     return this.model;
@@ -28,7 +33,8 @@ export class OllamaProvider implements LLMProvider {
         stream: false,
         options: {
           temperature: 0.3,
-          num_predict: 4096
+          num_predict: this.maxOutputTokens, // Uses configured value (4096)
+          stop: ["\n]"] // CRITICAL FIX for Qwen truncation (stops output after closing JSON array)
         }
       })
     });
@@ -44,11 +50,15 @@ export class OllamaProvider implements LLMProvider {
 
 export class OpenAIProvider implements LLMProvider {
   name = "OpenAI";
+  public maxOutputTokens: number;
 
   constructor(
     private apiKey: string,
-    private model: string
-  ) {}
+    private model: string,
+    // Removed maxOutputTokens argument here
+  ) {
+    this.maxOutputTokens = 4096; // Default or simplified initialization
+  }
 
   getModelName(): string {
     return `OpenAI (${this.model})`;
@@ -73,7 +83,9 @@ export class OpenAIProvider implements LLMProvider {
             content: prompt
           }
         ],
-        temperature: 0.3
+        temperature: 0.3,
+        // Using default max_tokens if not passed in, or rely on internal logic
+        max_tokens: this.maxOutputTokens // Kept for interface compliance
       })
     });
 
@@ -88,11 +100,15 @@ export class OpenAIProvider implements LLMProvider {
 
 export class AnthropicProvider implements LLMProvider {
   name = "Anthropic";
+  public maxOutputTokens: number;
 
   constructor(
     private apiKey: string,
-    private model: string
-  ) {}
+    private model: string,
+    // Removed maxOutputTokens argument here
+  ) {
+    this.maxOutputTokens = 4096;
+  }
 
   getModelName(): string {
     return `Claude (${this.model})`;
@@ -108,7 +124,7 @@ export class AnthropicProvider implements LLMProvider {
       },
       body: JSON.stringify({
         model: this.model,
-        max_tokens: 4096,
+        max_tokens: this.maxOutputTokens, // Kept for interface compliance
         messages: [
           {
             role: "user",
@@ -131,12 +147,16 @@ export class AnthropicProvider implements LLMProvider {
 
 export class OpenRouterProvider implements LLMProvider {
   name = "OpenRouter";
+  public maxOutputTokens: number;
 
   constructor(
     private apiKey: string,
     private model: string,
-    private baseUrl: string = "https://openrouter.ai/api/v1"
-  ) {}
+    private baseUrl: string = "https://openrouter.ai/api/v1",
+    // Removed maxOutputTokens argument here
+  ) {
+    this.maxOutputTokens = 4096;
+  }
 
   getModelName(): string {
     return `OpenRouter (${this.model})`;
@@ -164,7 +184,7 @@ export class OpenRouterProvider implements LLMProvider {
           }
         ],
         temperature: 0.3,
-        max_tokens: 4096
+        max_tokens: this.maxOutputTokens // Kept for interface compliance
       })
     });
 
@@ -180,22 +200,23 @@ export class OpenRouterProvider implements LLMProvider {
 
 export class GeminiProvider implements LLMProvider {
   name = "Gemini";
+  public maxOutputTokens: number;
 
   constructor(
     private apiKey: string,
-    private model: string
-  ) {}
+    private model: string,
+    // Removed maxOutputTokens argument here
+  ) {
+    this.maxOutputTokens = 4096;
+  }
 
   getModelName(): string {
     return `Gemini (${this.model})`;
   }
 
   async generateReview(prompt: string): Promise<string> {
-    // Remove version suffix if present (e.g., "gemini-2.0-flash-exp" -> "gemini-2.0-flash-exp")
-    const modelName = this.model;
-    
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${this.apiKey}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/${this.model}:generateContent?key=${this.apiKey}`,
       {
         method: "POST",
         headers: {
@@ -213,7 +234,7 @@ export class GeminiProvider implements LLMProvider {
           ],
           generationConfig: {
             temperature: 0.3,
-            maxOutputTokens: 4096
+            maxOutputTokens: this.maxOutputTokens // Kept for interface compliance
           }
         })
       }
