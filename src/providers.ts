@@ -14,7 +14,7 @@ export class OllamaProvider implements LLMProvider {
   constructor(
     private host: string,
     private model: string,
-    maxOutputTokens: number = 4000 // Accepts configurable output limit
+    maxOutputTokens: number = 4096 // Accepts configurable output limit
   ) {
     this.maxOutputTokens = maxOutputTokens;
   }
@@ -33,7 +33,7 @@ export class OllamaProvider implements LLMProvider {
         stream: false,
         options: {
           temperature: 0.3,
-          num_predict: this.maxOutputTokens, // Uses configured value
+          num_predict: this.maxOutputTokens, // Uses configured value (4096)
           stop: ["\n]"] // CRITICAL FIX for Qwen truncation (stops output after closing JSON array)
         }
       })
@@ -55,9 +55,9 @@ export class OpenAIProvider implements LLMProvider {
   constructor(
     private apiKey: string,
     private model: string,
-    maxOutputTokens: number = 4096 // Accepts configurable output limit
+    // Removed maxOutputTokens argument here
   ) {
-    this.maxOutputTokens = maxOutputTokens;
+    this.maxOutputTokens = 4096; // Default or simplified initialization
   }
 
   getModelName(): string {
@@ -84,7 +84,8 @@ export class OpenAIProvider implements LLMProvider {
           }
         ],
         temperature: 0.3,
-        max_tokens: this.maxOutputTokens // Uses configured value (fixed missing param)
+        // Using default max_tokens if not passed in, or rely on internal logic
+        max_tokens: this.maxOutputTokens // Kept for interface compliance
       })
     });
 
@@ -104,9 +105,9 @@ export class AnthropicProvider implements LLMProvider {
   constructor(
     private apiKey: string,
     private model: string,
-    maxOutputTokens: number = 4096 // Accepts configurable output limit
+    // Removed maxOutputTokens argument here
   ) {
-    this.maxOutputTokens = maxOutputTokens;
+    this.maxOutputTokens = 4096;
   }
 
   getModelName(): string {
@@ -123,7 +124,7 @@ export class AnthropicProvider implements LLMProvider {
       },
       body: JSON.stringify({
         model: this.model,
-        max_tokens: this.maxOutputTokens, // Uses configured value
+        max_tokens: this.maxOutputTokens, // Kept for interface compliance
         messages: [
           {
             role: "user",
@@ -152,9 +153,9 @@ export class OpenRouterProvider implements LLMProvider {
     private apiKey: string,
     private model: string,
     private baseUrl: string = "https://openrouter.ai/api/v1",
-    maxOutputTokens: number = 4096 // Accepts configurable output limit
+    // Removed maxOutputTokens argument here
   ) {
-    this.maxOutputTokens = maxOutputTokens;
+    this.maxOutputTokens = 4096;
   }
 
   getModelName(): string {
@@ -183,7 +184,7 @@ export class OpenRouterProvider implements LLMProvider {
           }
         ],
         temperature: 0.3,
-        max_tokens: this.maxOutputTokens // Uses configured value
+        max_tokens: this.maxOutputTokens // Kept for interface compliance
       })
     });
 
@@ -204,9 +205,9 @@ export class GeminiProvider implements LLMProvider {
   constructor(
     private apiKey: string,
     private model: string,
-    maxOutputTokens: number = 4096 // Accepts configurable output limit
+    // Removed maxOutputTokens argument here
   ) {
-    this.maxOutputTokens = maxOutputTokens;
+    this.maxOutputTokens = 4096;
   }
 
   getModelName(): string {
@@ -214,11 +215,8 @@ export class GeminiProvider implements LLMProvider {
   }
 
   async generateReview(prompt: string): Promise<string> {
-    // Remove version suffix if present (e.g., "gemini-2.0-flash-exp" -> "gemini-2.0-flash-exp")
-    const modelName = this.model;
-    
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${modelName}:generateContent?key=${this.apiKey}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/${this.model}:generateContent?key=${this.apiKey}`,
       {
         method: "POST",
         headers: {
@@ -236,7 +234,7 @@ export class GeminiProvider implements LLMProvider {
           ],
           generationConfig: {
             temperature: 0.3,
-            maxOutputTokens: this.maxOutputTokens // Uses configured value
+            maxOutputTokens: this.maxOutputTokens // Kept for interface compliance
           }
         })
       }
