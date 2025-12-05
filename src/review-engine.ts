@@ -8,13 +8,16 @@ import { PRFile, ReviewFinding, FilterStats, PostReviewContext } from './review-
 import * as path from 'path';
 import * as fs from 'fs';
 
+const agent='pr-review'
+
 export class ReviewEngine {
   private configLoader: ConfigLoader;
   private filterStats?: FilterStats;
+  private promptTemplate: string;
 
   constructor(private llm: LLMProvider) {
     this.configLoader = new ConfigLoader();
-    this.promptTemplate = this.configLoader.getAgentContext('pr-review');
+    this.promptTemplate = this.configLoader.getAgentContext(agent);
   }
 
   async reviewPR(context: Context, pr: any, repo: any): Promise<void> {
