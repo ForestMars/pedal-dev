@@ -14,7 +14,7 @@ export class OllamaProvider implements LLMProvider {
   constructor(
     private host: string,
     private model: string,
-    maxOutputTokens: number = 4096 // Accepts configurable output limit
+    maxOutputTokens: number = 9999 // Accepts configurable output limit
   ) {
     this.maxOutputTokens = maxOutputTokens;
   }
