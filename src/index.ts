@@ -16,27 +16,32 @@ if (!CONFIG_PATH) {
 let configLoader: ConfigLoader;
 
 try {
-  // Config is loaded in the constructor
+  console.log(`📂 Loading config from: ${CONFIG_PATH}`);
   configLoader = new ConfigLoader(CONFIG_PATH);
   
-  // Access the config via the getter
   const config = configLoader.config;
   
-  // Get the configured provider info for logging
   const logProvider = config.llm.default_provider;
   const logModel = config.llm.default_model;
   
   console.log(`🤖 PR Review Agent initialized. Configured Model: **${logProvider} (${logModel})**`);
+  console.log(`✅ ConfigLoader successfully initialized`);
   
 } catch (e: any) {
   console.error(`🔴 Fatal Error: Could not load configuration: ${e.message}`);
+  console.error(e.stack);
   process.exit(1);
 }
 
 // --- Probot Application Handler (Executes on Events) ---
 
 export default (app: Probot) => {
+    console.log(`🎯 Probot app handler registered`);
+    console.log(`🔔 Listening for: pull_request.opened, pull_request.reopened, pull_request.synchronize`);
+    
     app.on(["pull_request.opened", "pull_request.reopened", "pull_request.synchronize"], async (context) => {
+        console.log(`\n🚨 WEBHOOK RECEIVED - Event handler triggered!`);
+        
         const pr = context.payload.pull_request;
         const repo = context.payload.repository;
 
@@ -47,19 +52,23 @@ export default (app: Probot) => {
         console.log("========================================\n");
 
         try {
-            // Get the LLM provider from the config
+            console.log(`🔧 Getting LLM provider...`);
             const llmProvider = configLoader.getLLMProvider(); 
+            console.log(`✅ LLM provider created: ${llmProvider.constructor.name}`);
             
-            // Override maxOutputTokens if needed
             llmProvider.maxOutputTokens = 9999;
             
+            console.log(`🔧 Creating ReviewEngine...`);
             const reviewEngine = new ReviewEngine(llmProvider, configLoader); 
+            console.log(`✅ ReviewEngine created`);
             
+            console.log(`🚀 Starting PR review...`);
             await reviewEngine.reviewPR(context, pr, repo);
+            console.log(`✅ PR review completed`);
             
         } catch (error: any) {
             console.error("❌ Error reviewing PR (See full trace below):", error.message);
-            console.error(error); 
+            console.error(error.stack); 
 
             await context.octokit.issues.createComment({
                 owner: repo.owner.login,
@@ -68,5 +77,10 @@ export default (app: Probot) => {
                 body: `🤖 **AI Code Review Error**\n\n⚠️ Failed to review PR: **${error.message.substring(0, 500)}**\n\nI encountered an internal error. Please check the application logs for details.`
             });
         }
+    });
+    
+    // Add a catch-all to see if webhook is even reaching the app
+    app.onAny(async (context) => {
+        console.log(`📨 Received webhook: ${context.name}.${context.payload.action || 'no-action'}`);
     });
 };
