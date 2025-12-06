@@ -160,6 +160,17 @@ export class ReviewEngine {
         
         const findings = this.parseReviewResponse(response);
         console.log(`⚠️⚠️⚠️ ✓ Found ${findings.length} issue(s) in this batch`);
+        // Add this right after parsing:
+        console.log('\n=== FINDINGS DEBUG ===');
+        findings.forEach((f, i) => {
+        console.log(`Finding ${i + 1}:`);
+        console.log(`  filename: ${f.filename}`);
+        console.log(`  line: ${f.line}`);
+        console.log(`  severity: ${f.severity}`);
+        console.log(`  category: ${f.category}`);
+        console.log(`  message: ${f.message?.substring(0, 100)}`);
+        });
+        console.log('===================\n');
         
         allFindings.push(...findings);
       } catch (error) {

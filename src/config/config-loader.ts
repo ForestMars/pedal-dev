@@ -137,6 +137,8 @@ export class ConfigLoader {
     public getPromptFilePath(agentName: string): string {
         const envVarName = `${agentName.toUpperCase().replace('-', '_')}_PROMPT`;
         const envPath = process.env[envVarName];
+        console.log(`📣`, envPath);
+        
     
         if (envPath) {
             return path.join(process.cwd(), envPath);
