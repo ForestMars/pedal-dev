@@ -15,8 +15,8 @@ export class ReviewEngine {
   private filterStats?: FilterStats;
   private promptTemplate: string;
 
-  constructor(private llm: LLMProvider) {
-    this.configLoader = new ConfigLoader();
+  constructor(private llm: LLMProvider, configLoader: ConfigLoader) {
+    this.configLoader = configLoader;
     this.promptTemplate = this.configLoader.getAgentContext(agent);
   }
 
@@ -141,7 +141,7 @@ export class ReviewEngine {
       // <<< CRITICAL DEBUG PRINT ADDED HERE >>>
       if (batch[0] && batch[0].patch) {
         console.log(`[DEBUG_RAW_PATCH] START for ${batch[0].filename}`);
-        console.log(batch[0].patch); 
+        // console.log(batch[0].patch); // @TODO use pino for structured logging 
         console.log(`[DEBUG_RAW_PATCH] END`);
       } else {
         console.log(`[DEBUG_RAW_PATCH] WARNING: Patch content is NULL or EMPTY for ${batch[0].filename}`);
@@ -159,7 +159,7 @@ export class ReviewEngine {
         console.log(`[DEBUG_RAW_OUTPUT] Response Snippet (500 chars): ${response.substring(0, 500).trim()}`);
         
         const findings = this.parseReviewResponse(response);
-        console.log(`✓ Found ${findings.length} issue(s) in this batch`);
+        console.log(`⚠️⚠️⚠️ ✓ Found ${findings.length} issue(s) in this batch`);
         
         allFindings.push(...findings);
       } catch (error) {
