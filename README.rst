@@ -6,7 +6,9 @@ pedal-dev
 
 **Now with MULTIPASS!**
 
-A GitHub App for product engineering design automation lifecycle. Companion app to `pedal-pro <https://github.com/ForestMars/PEDAL>`_, the automated pipeline. Provides automated code review using LLM providers, reviewing pull requests and posting inline comments with actionable feedback.
+A GitHub App for product engineering design automation lifecycle. 
+
+Companion app to `pedal-pro <https://github.com/ForestMars/PEDAL>`_, the automated pipeline. Provides automated code review using LLM providers, reviewing pull requests and posting inline comments with actionable feedback.
 
 Agents
 ------
