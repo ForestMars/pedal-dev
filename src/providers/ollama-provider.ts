@@ -22,7 +22,7 @@ export class OllamaProvider extends ApiProviderBase {
                 prompt: prompt,
                 stream: false,
                 options: {
-                    temperature: 1.5,
+                    temperature: 0.3,
                     num_predict: this.maxOutputTokens,
                 },
             },
