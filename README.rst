@@ -122,4 +122,5 @@ Architecture
 License
 -------
 
-[Your License Here]
+All Rights Reserved
+Contact for Licensing
