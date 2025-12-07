@@ -1,11 +1,11 @@
 #!/usr/bin/env bun
 /**
- * @file ts-fix-agent.ts
+ * @file smart-fix.ts
  * @description Analyzes TypeScript build errors, intelligently groups similar errors,
  * and generates consolidated, systemic fix suggestions using an Ollama LLM.
  *
- * @author Me and some supermodels
- * @version 0.0.5
+ * @author Me and Mr. Fixit
+ * @version 0.0.6
  * @license MIT
  *
  * @usage
@@ -24,7 +24,9 @@ import { join } from "path";
 let DEFAULT_MODEL = "codellama:latest";
 let DEFAULT_OLLAMA_HOST = "http://localhost:11434";
 let DEFAULT_ERRORS_PATH = join(process.cwd(), "build-errors.txt");
-let DEFAULT_OUTPUT_FILE = join(process.cwd(), "fix-suggestions");
+let DEFAULT_OUTPUT_PATH = join(process.cwd(), "new-ts-fixes.md");
+let DEFAULT_PROMPT_PATH = join(process.cwd(), 'prompts/fix-suggestion.prompt.txt');
+let DEFAULT_FILE_FORMAT = "markdown"; 
 let DEFAULT_MAX_GROUPS = Infinity; // Represents processing all groups by default
 
 // Types
@@ -55,22 +57,23 @@ interface Config {
 }
 
 // CLI Help
-function showHelp() {
+// FIX: showHelp must accept the Config object to display resolved defaults correctly.
+function showHelp(config: Config) {
   console.log(`
-ts-fix-agent.ts — Generate LLM suggestions for grouped TypeScript build errors
+smart-fix.ts — Generate LLM suggestions for grouped TypeScript build errors
 
 USAGE:
-  bun ts-fix-agent.ts [OPTIONS]
+  bun smart-fix.ts [OPTIONS]
   bun run build 2>&1 | bun ts-fix-agent.ts --count 3
   bun run build 2>&1 > build-errors.txt && bun ts-fix-agent.ts
 
 OPTIONS:
-  --model <name>     Ollama model (default: ${DEFAULT_MODEL})
-  --host <url>       Ollama host URL (default: ${DEFAULT_OLLAMA_HOST})
+  --model <name>     Ollama model (default: ${config.model})
+  --host <url>       Ollama host URL (default: ${config.ollamaHost})
   --count, -n <num>  Number of error groups to fix (default: all)
   --errors <path>    Path to build errors file (default: ./build-errors.txt or stdin)
-  --prompt <path>    Path to prompt template (default: ${DEFAULT_PROMPT_PATH})
-  --output <path>    Output file for fixes (default: ./ts-fixes.md)
+  --prompt <path>    Path to prompt template (default: ${config.promptPath})
+  --output <path>    Output file for fixes (default: ${config.outputPath})
   --stream           Use streaming mode (prevents timeouts, default: false)
   --help, -h         Show this help message
 
@@ -96,9 +99,8 @@ EXAMPLES:
 function parseArgs(): Config {
   const args = process.argv.slice(2);
   
-  if (args.includes("--help") || args.includes("-h")) {
-    showHelp();
-  }
+  // NOTE: showHelp check must be performed after configuration is fully resolved
+  // to ensure default values displayed in the help text are accurate.
 
   function getFlagValue(flag: string, shortFlag: string, defaultValue: string): string {
     let idx = args.indexOf(flag);
@@ -107,21 +109,29 @@ function parseArgs(): Config {
   }
 
   // Parse max groups
-  let maxGroups = Infinity;
+  let maxGroups = DEFAULT_MAX_GROUPS;
   const countArgIndex = args.indexOf("--count") !== -1 ? args.indexOf("--count") : args.indexOf("-n");
   if (countArgIndex !== -1 && args[countArgIndex + 1] && !isNaN(parseInt(args[countArgIndex + 1]))) {
     maxGroups = parseInt(args[countArgIndex + 1]);
   }
 
-  return {
+  // FIX: Use hoisted defaults directly for resolution, honoring environment variables.
+  const config: Config = {
     model: getFlagValue("--model", "", process.env.OLLAMA_MODEL || DEFAULT_MODEL),
     ollamaHost: getFlagValue("--host", "", process.env.OLLAMA_HOST || DEFAULT_OLLAMA_HOST),
     maxGroups,
-    errorsPath: getFlagValue("--errors", "", join(process.cwd(), "build-errors.txt")),
+    errorsPath: getFlagValue("--errors", "", DEFAULT_ERRORS_PATH),
     promptPath: getFlagValue("--prompt", "", DEFAULT_PROMPT_PATH),
-    outputPath: getFlagValue("--output", "", join(process.cwd(), "ts-fixes.md")),
+    outputPath: getFlagValue("--output", "", DEFAULT_OUTPUT_PATH), // Use resolved default
     useStreaming: args.includes("--stream")
   };
+  
+  // FIX: Perform the showHelp check here, after 'config' is resolved.
+  if (args.includes("--help") || args.includes("-h")) {
+    showHelp(config);
+  }
+  
+  return config;
 }
 
 /*
@@ -220,7 +230,7 @@ async function generateGroupFix(
       .replace(/\{\{ERROR_COUNT\}\}/g, group.count.toString())
       .replace(/\{\{EXAMPLE_ERRORS\}\}/g, exampleErrors);
   } else {
-    prompt = `Immediate return this: "Context not found. Nothing to do."`;
+    prompt = `Immediately return this: "Context not found. Nothing to do."`;
   }
 
   try {
