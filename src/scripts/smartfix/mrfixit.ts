@@ -1,100 +1,94 @@
 #!/usr/bin/env bun
 /**
  * @file mrfixit.ts
- * @description Smart TypeScript Error Fixer
- *              Rules-first, LLM fallback, streaming enabled for large models
+ * @description Smart TypeScript Error Fixer Harness
+ *              Supports two engines: rules (deterministic) and analyser (LLM)
  * @version 0.0.11
- * @author Your Team
  */
 
 import { readFileSync, existsSync } from "fs";
 import { join } from "path";
 import type { ErrorGroup, TSError, FixResult } from './types';
 import { analyzeWithRules } from './engines/rules';
-import { OllamaClient } from '@ollama/client';
+import { analyzeWithAnalyser } from './engines/analyser';
 
 interface Config {
-  analyzer: 'rules' | 'llm' | 'hybrid';
-  llmProvider?: 'ollama' | 'claude';
-  model: string;
+  engine: 'rules' | 'analyser';
+  model?: string;
   ollamaHost: string;
   maxGroups: number;
   errorsPath: string;
   outputJsonPath: string;
   outputTxtPath: string;
-  outputFormat: 'markdown' | 'json' | 'aider';
+  streaming: boolean;
 }
 
-const DEFAULTS: Config = {
-  analyzer: 'rules',
-  llmProvider: 'ollama',
+const DEFAULTS = {
+  engine: 'rules' as const,
   model: process.env.OLLAMA_MODEL || 'qwen2.5-coder:32b',
   ollamaHost: process.env.OLLAMA_HOST || 'http://localhost:11434',
   errorsPath: join(process.cwd(), 'build-errors.txt'),
   outputJsonPath: join(process.cwd(), 'ts-fixes.json'),
   outputTxtPath: join(process.cwd(), 'ts-fixes.txt'),
   maxGroups: Infinity,
-  outputFormat: 'aider'
+  streaming: true
 };
 
-// ---- LLM CALL WITH STREAMING ----
-async function callLLM(prompt: string, model: string): Promise<string> {
-  const client = new OllamaClient({ apiHost: DEFAULTS.ollamaHost });
-
-  let output = '';
-  const response = await client.generate({
-    model,
-    prompt,
-    maxTokens: 1500,
-    temperature: 0,
-    stream: true, // <-- ENABLE STREAMING
-    stop: ["\n\n"]
-  });
-
-  // Streaming handler
-  for await (const chunk of response.stream()) {
-    if (chunk.type === 'output_text') {
-      output += chunk.text;
-    }
-  }
-
-  return output;
+// --- Parse config from environment ---
+function getConfig(): Config {
+  return {
+    engine: (process.env.ENGINE === 'analyser' ? 'analyser' : 'rules'),
+    model: process.env.OLLAMA_MODEL || DEFAULTS.model,
+    ollamaHost: process.env.OLLAMA_HOST || DEFAULTS.ollamaHost,
+    errorsPath: process.env.ERRORS_PATH || DEFAULTS.errorsPath,
+    outputJsonPath: process.env.OUTPUT_JSON_PATH || DEFAULTS.outputJsonPath,
+    outputTxtPath: process.env.OUTPUT_TXT_PATH || DEFAULTS.outputTxtPath,
+    maxGroups: process.env.MAX_GROUPS ? parseInt(process.env.MAX_GROUPS) : DEFAULTS.maxGroups,
+    streaming: process.env.STREAMING !== 'false'
+  };
 }
 
-// ---- PARSE TS ERRORS ----
+// --- Parse TypeScript errors ---
 function parseTypeScriptErrors(output: string): TSError[] {
   const errors: TSError[] = [];
   const lines = output.split('\n');
+
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     const match = line.match(/^(.+)\((\d+),(\d+)\): error (TS\d+): (.+)$/);
-    if (!match) continue;
-    const [, file, lineNum, col, code, message] = match;
 
-    let context = message;
-    for (let j = i + 1; j < Math.min(i + 3, lines.length); j++) {
-      const nextLine = lines[j].trim();
-      if (nextLine && !nextLine.match(/^[a-zA-Z]/)) context += '\n' + nextLine;
-      else break;
+    if (match) {
+      const [, file, lineNum, col, code, message] = match;
+      let context = message;
+
+      for (let j = i + 1; j < Math.min(i + 3, lines.length); j++) {
+        const nextLine = lines[j].trim();
+        if (nextLine && !nextLine.match(/^[a-zA-Z]/)) {
+          context += '\n' + nextLine;
+        } else break;
+      }
+
+      errors.push({
+        file,
+        line: parseInt(lineNum),
+        column: parseInt(col),
+        code,
+        message,
+        context: context.trim()
+      });
     }
-
-    errors.push({
-      file,
-      line: parseInt(lineNum),
-      column: parseInt(col),
-      code,
-      message,
-      context: context.trim()
-    });
   }
+
   return errors;
 }
 
-// ---- GROUP ERRORS ----
+// --- Group errors by pattern ---
 function groupErrors(errors: TSError[]): ErrorGroup[] {
   const groups = new Map<string, ErrorGroup>();
+
   for (const error of errors) {
     let pattern = error.message;
+
     switch (error.code) {
       case 'TS2835': case 'TS2834': pattern = 'Missing file extension in import'; break;
       case 'TS7006': pattern = 'Implicit any type'; break;
@@ -105,35 +99,39 @@ function groupErrors(errors: TSError[]): ErrorGroup[] {
     }
 
     const key = `${error.code}:${pattern}`;
+
     if (!groups.has(key)) {
       groups.set(key, { code: error.code, pattern, errors: [], count: 0 });
     }
+
     const group = groups.get(key)!;
     group.errors.push(error);
     group.count++;
   }
+
   return Array.from(groups.values()).sort((a, b) => b.count - a.count);
 }
 
-// ---- OUTPUT FORMATTING ----
+// --- Generate Aider-style text output ---
 function generateAiderText(fixes: Array<{ group: ErrorGroup; fix: FixResult }>): string {
   let text = '';
   for (const { group, fix } of fixes) {
     text += `${group.code} ${group.pattern}\n`;
     text += `  - ${group.count} occurrence${group.count > 1 ? 's' : ''} across ${fix.fileChanges?.length || 0} file${(fix.fileChanges?.length || 0) > 1 ? 's' : ''}\n`;
     text += `  - ${fix.description}\n`;
-    if (fix.fileChanges?.length) {
+    if (fix.fileChanges && fix.fileChanges.length > 0) {
       text += `  - Files:\n`;
       for (const fc of fix.fileChanges) {
         const lineStr = fc.lines?.length === 1 ? `line ${fc.lines[0]}` : `lines ${fc.lines?.join(',')}`;
         text += `    ${fc.path} (${lineStr})\n`;
       }
     }
-    text += '\n';
+    text += `\n`;
   }
   return text.trim();
 }
 
+// --- Generate Aider-style JSON output ---
 function generateAiderOutput(fixes: Array<{ group: ErrorGroup; fix: FixResult }>): any {
   return {
     summary: `Fixed ${fixes.length} error groups`,
@@ -151,14 +149,17 @@ function generateAiderOutput(fixes: Array<{ group: ErrorGroup; fix: FixResult }>
   };
 }
 
-// ---- MAIN ----
+// --- Main ---
 async function main() {
-  const config = DEFAULTS;
+  const config = getConfig();
 
-  console.log(`🔧 Smart TypeScript Error Fixer`);
-  console.log(`⚙️  Analyzer: ${config.analyzer}`);
-  console.log(`⚙️  LLM Model: ${config.model} (streaming enabled)\n`);
+  console.log('🔧 Smart TypeScript Error Fixer (Harness)');
+  console.log(`Engine: ${config.engine}`);
+  console.log(`LLM Model: ${config.model}`);
+  console.log(`Streaming: ${config.streaming}`);
+  console.log('━'.repeat(60));
 
+  // --- Load errors ---
   let errorInput = '';
   if (!process.stdin.isTTY) {
     for await (const chunk of process.stdin) errorInput += chunk;
@@ -175,9 +176,9 @@ async function main() {
   }
 
   const errors = parseTypeScriptErrors(errorInput);
-  if (!errors.length) {
+  if (errors.length === 0) {
     console.log('⚠️  No parseable TypeScript errors found');
-    process.exit(1);
+    process.exit(0);
   }
 
   const groups = groupErrors(errors);
@@ -185,31 +186,25 @@ async function main() {
 
   console.log(`Found ${errors.length} errors in ${groups.length} categories`);
   console.log(`Processing ${groupsToProcess.length} categories\n`);
+  console.log('━'.repeat(60) + '\n');
 
-  // ---- RUN RULES FIRST ----
-  const result = analyzeWithRules(groupsToProcess);
-
-  // ---- RUN LLM ON UNKNOWNS ----
-  if (result.unknown.length > 0 && config.analyzer !== 'rules') {
-    for (const unknownGroup of result.unknown) {
-      const prompt = `Analyze this TypeScript error and suggest a fix:\n\n${JSON.stringify(unknownGroup.errors, null, 2)}`;
-      try {
-        const llmResponse = await callLLM(prompt, config.model);
-        unknownGroup.fix = { description: llmResponse, confidence: 0.8 };
-      } catch (err) {
-        console.error('❌ LLM call failed:', err);
-      }
-    }
+  // --- Invoke selected engine ---
+  let result: { fixes: Array<{ group: ErrorGroup; fix: FixResult }>; unknown?: ErrorGroup[] };
+  if (config.engine === 'rules') {
+    result = analyzeWithRules(groupsToProcess);
+  } else if (config.engine === 'analyser') {
+    result = await analyzeWithAnalyser(groupsToProcess, config);
+  } else {
+    throw new Error(`Unknown ENGINE value: ${config.engine}`);
   }
 
-  // ---- WRITE OUTPUT ----
+  // --- Write outputs ---
   await Bun.write(config.outputJsonPath, JSON.stringify(generateAiderOutput(result.fixes), null, 2));
-  const aiderText = generateAiderText(result.fixes);
-  await Bun.write(config.outputTxtPath, aiderText);
+  await Bun.write(config.outputTxtPath, generateAiderText(result.fixes));
 
   console.log(`💾 Fixes written to ${config.outputJsonPath} (JSON)`);
   console.log(`💾 Fixes written to ${config.outputTxtPath} (Aider-style text)`);
-  console.log(`✨ Done!`);
+  console.log('✨ Done!');
 }
 
 main();

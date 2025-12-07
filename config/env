@@ -4,7 +4,7 @@
 FILTER_LARGE_FILES=yes
 
 # Models 
-## pr-reiview
+## pr-review
 PR_REVIEW_MODEL=qwen2.5-coder:7b
 
 # Prompts
@@ -18,5 +18,6 @@ PR_REVIEW_PASSES=3  # Number of passes if multipass enabled
 PR_REVIEW_TEMPERATURE=0.3
 PR_REVIEW_MERGE_STRATEGY=union  # union (all findings) | intersection (only if found multiple times) | majority (found in >50% of passes)
 
+export ENGINE=analyser
 export AIDER_MODEL=ollama/qwen2.5-coder:7b
 
