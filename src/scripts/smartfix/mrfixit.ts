@@ -290,15 +290,19 @@ async function main() {
   // Generate output
   let outputContent: string;
   
-  if (config.outputFormat === 'json' || config.outputFormat === 'aider') {
+  if (config.outputFormat === 'json') {
     const json = generateAiderOutput(result.fixes);
-    outputContent = JSON.stringify(json, null, 2);
-  } else {
-    outputContent = generateMarkdown(result.fixes);
+    await Bun.write('ts-fixes.json', JSON.stringify(json, null, 2));
+  console.log(`💾 JSON fixes written to ts-fixes.json`);
   }
-  
-  await Bun.write(config.outputPath, outputContent);
-  
+
+  // Also always generate aider-friendly text
+  const aiderText = result.fixes
+    .map(({ group, fix }) => `${group.code} ${group.pattern} - ${fix.description}`)
+    .join('\n\n');
+
+  await Bun.write('ts-fixes.txt', aiderText);
+  console.log(`💾 Aider-friendly text written to ts-fixes.txt`);
   console.log(`💾 Fixes written to ${config.outputPath}`);
   console.log(`✨ Done!\n`);
 }
