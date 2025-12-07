@@ -1,110 +1,220 @@
-# TypeScript Build Fixes
-
-* **Generated:** 2025-12-07T05:48:14.386Z
-* **Model:** qwen3-coder:latest
-* **Total Errors:** 35
-* **Error Categories Processed:** 7 of 7
-
----
-
-## 1. [TS2835] Missing file extension in import (15 occurrences)
-
-### Fix Suggestion
-
-Error: The operation timed out.
-
-### Affected Files
-- `src/agents/review-engine-core.ts:4` - Relative import paths need explicit file extensions in ECMAScript imports when '--moduleResolution' is 'node16' or 'nodenext'. Did you mean './review-engine-types.js'?
-- `src/agents/review-engine.ts:5` - Relative import paths need explicit file extensions in ECMAScript imports when '--moduleResolution' is 'node16' or 'nodenext'. Did you mean '../config/config-loader.js'?
-- `src/agents/review-engine.ts:6` - Relative import paths need explicit file extensions in ECMAScript imports when '--moduleResolution' is 'node16' or 'nodenext'. Did you mean './review-engine-core.js'?
-- `src/agents/review-engine.ts:7` - Relative import paths need explicit file extensions in ECMAScript imports when '--moduleResolution' is 'node16' or 'nodenext'. Did you mean './review-engine-types.js'?
-- `src/config/config-loader.ts:10` - Relative import paths need explicit file extensions in ECMAScript imports when '--moduleResolution' is 'node16' or 'nodenext'. Did you mean '../providers/index.js'?
-- `src/index.ts:4` - Relative import paths need explicit file extensions in ECMAScript imports when '--moduleResolution' is 'node16' or 'nodenext'. Did you mean './config/config-loader.js'?
-- `src/index.ts:5` - Relative import paths need explicit file extensions in ECMAScript imports when '--moduleResolution' is 'node16' or 'nodenext'. Did you mean './agents/review-engine.js'?
-- `src/pr-test.ts:5` - Relative import paths need explicit file extensions in ECMAScript imports when '--moduleResolution' is 'node16' or 'nodenext'. Did you mean './agents/review-engine.js'?
-- `src/providers/index.ts:5` - Relative import paths need explicit file extensions in ECMAScript imports when '--moduleResolution' is 'node16' or 'nodenext'. Did you mean './api-provider-base.js'?
-- `src/providers/index.ts:6` - Relative import paths need explicit file extensions in ECMAScript imports when '--moduleResolution' is 'node16' or 'nodenext'. Did you mean './claude-provider.js'?
-- ... and 5 more files.
-
----
-
-## 2. [TS7006] Implicit any type (6 occurrences)
-
-### Fix Suggestion
-
-Error: The operation timed out.
-
-### Affected Files
-- `src/agents/review-engine.ts:102` - Parameter 'pattern' implicitly has an 'any' type.
-- `src/pr-test.ts:60` - Parameter 'f' implicitly has an 'any' type.
-- `src/pr-test.ts:131` - Parameter 'finding' implicitly has an 'any' type.
-- `src/pr-test.ts:131` - Parameter 'i' implicitly has an 'any' type.
-- `src/pr-test.ts:141` - Parameter 'f' implicitly has an 'any' type.
-- `src/pr-test.ts:142` - Parameter 'f' implicitly has an 'any' type.
-
----
-
-## 3. [TS2339] Property does not exist (4 occurrences)
-
-### Fix Suggestion
-
-Error: The operation timed out.
-
-### Affected Files
-- `src/index.ts:84` - Property 'action' does not exist on type 'BranchProtectionConfigurationDisabledEvent | BranchProtectionConfigurationEnabledEvent | ... 436 more ... | WorkflowDispatchEvent'.
-- `src/providers/ollama-provider.ts:18` - Property 'host' does not exist on type 'OllamaProvider'.
-- `src/providers/ollama-provider.ts:21` - Property 'model' does not exist on type 'OllamaProvider'.
-- `src/providers/ollama-provider.ts:26` - Property 'maxOutputTokens' does not exist on type 'OllamaProvider'.
-
----
-
-## 4. [TS2304] Cannot find name (4 occurrences)
-
-### Fix Suggestion
-
-Error: The operation timed out.
-
-### Affected Files
-- `src/providers/claude-provider.ts:3` - Cannot find name 'LLMProvider'.
-- `src/providers/gemini-provider.ts:3` - Cannot find name 'LLMProvider'.
-- `src/providers/openai-provider.ts:3` - Cannot find name 'LLMProvider'.
-- `src/providers/openrouter-provider.ts:3` - Cannot find name 'LLMProvider'.
-
----
-
-## 5. [TS2307] Cannot find module (3 occurrences)
-
-### Fix Suggestion
-
-Error: The operation timed out.
-
-### Affected Files
-- `src/pr-test.ts:4` - Cannot find module '@octokit/rest' or its corresponding type declarations.
-- `src/providers/api-provider-base.ts:1` - Cannot find module './llm-provider.interface' or its corresponding type declarations.
-- `src/providers/index.ts:8` - Cannot find module './llm-provider.interface' or its corresponding type declarations.
-
----
-
-## 6. [TS2834] Missing file extension in import (2 occurrences)
-
-### Fix Suggestion
-
-Error: The operation timed out.
-
-### Affected Files
-- `src/agents/review-engine.ts:4` - Relative import paths need explicit file extensions in ECMAScript imports when '--moduleResolution' is 'node16' or 'nodenext'. Consider adding an extension to the import path.
-- `src/pr-test.ts:6` - Relative import paths need explicit file extensions in ECMAScript imports when '--moduleResolution' is 'node16' or 'nodenext'. Consider adding an extension to the import path.
-
----
-
-## 7. [TS7016] Missing type declarations (1 occurrences)
-
-### Fix Suggestion
-
-Error: The operation timed out.
-
-### Affected Files
-- `src/config/config-loader.ts:11` - Could not find a declaration file for module 'js-yaml'. '/Users/forestmars/sandbox/pedal/node_modules/js-yaml/dist/js-yaml.mjs' implicitly has an 'any' type.
-
----
-
+{
+  "summary": "Fixed 6 error groups",
+  "fixes": [
+    {
+      "errorCode": "TS2835",
+      "pattern": "Missing file extension in import",
+      "count": 15,
+      "confidence": "high",
+      "fixType": "batch-edit",
+      "description": "Add .js extensions to 15 import statements across 7 files",
+      "fileChanges": [
+        {
+          "path": "src/agents/review-engine-core.ts",
+          "instruction": "Add .js extension to all relative import statements on lines: 4. Change patterns like \"from './foo'\" to \"from './foo.js'\" and \"from '../bar/baz'\" to \"from '../bar/baz.js'\"",
+          "lines": [
+            4
+          ]
+        },
+        {
+          "path": "src/agents/review-engine.ts",
+          "instruction": "Add .js extension to all relative import statements on lines: 5, 6, 7. Change patterns like \"from './foo'\" to \"from './foo.js'\" and \"from '../bar/baz'\" to \"from '../bar/baz.js'\"",
+          "lines": [
+            5,
+            6,
+            7
+          ]
+        },
+        {
+          "path": "src/config/config-loader.ts",
+          "instruction": "Add .js extension to all relative import statements on lines: 10. Change patterns like \"from './foo'\" to \"from './foo.js'\" and \"from '../bar/baz'\" to \"from '../bar/baz.js'\"",
+          "lines": [
+            10
+          ]
+        },
+        {
+          "path": "src/index.ts",
+          "instruction": "Add .js extension to all relative import statements on lines: 4, 5. Change patterns like \"from './foo'\" to \"from './foo.js'\" and \"from '../bar/baz'\" to \"from '../bar/baz.js'\"",
+          "lines": [
+            4,
+            5
+          ]
+        },
+        {
+          "path": "src/pr-test.ts",
+          "instruction": "Add .js extension to all relative import statements on lines: 5. Change patterns like \"from './foo'\" to \"from './foo.js'\" and \"from '../bar/baz'\" to \"from '../bar/baz.js'\"",
+          "lines": [
+            5
+          ]
+        },
+        {
+          "path": "src/providers/index.ts",
+          "instruction": "Add .js extension to all relative import statements on lines: 5, 6, 7, 9, 10, 11. Change patterns like \"from './foo'\" to \"from './foo.js'\" and \"from '../bar/baz'\" to \"from '../bar/baz.js'\"",
+          "lines": [
+            5,
+            6,
+            7,
+            9,
+            10,
+            11
+          ]
+        },
+        {
+          "path": "src/providers/ollama-provider.ts",
+          "instruction": "Add .js extension to all relative import statements on lines: 3. Change patterns like \"from './foo'\" to \"from './foo.js'\" and \"from '../bar/baz'\" to \"from '../bar/baz.js'\"",
+          "lines": [
+            3
+          ]
+        }
+      ],
+      "commands": [],
+      "manualSteps": []
+    },
+    {
+      "errorCode": "TS7006",
+      "pattern": "Implicit any type",
+      "count": 6,
+      "confidence": "medium",
+      "fixType": "batch-edit",
+      "description": "Add type annotations to 6 parameters with implicit 'any'",
+      "fileChanges": [
+        {
+          "path": "src/agents/review-engine.ts",
+          "instruction": "Add explicit type annotation to parameter 'pattern' on line 102. Common types: string, number, any, or a specific interface type.",
+          "lines": [
+            102
+          ]
+        },
+        {
+          "path": "src/pr-test.ts",
+          "instruction": "Add explicit type annotation to parameter 'f' on line 60. Common types: string, number, any, or a specific interface type.",
+          "lines": [
+            60
+          ]
+        },
+        {
+          "path": "src/pr-test.ts",
+          "instruction": "Add explicit type annotation to parameter 'finding' on line 131. Common types: string, number, any, or a specific interface type.",
+          "lines": [
+            131
+          ]
+        },
+        {
+          "path": "src/pr-test.ts",
+          "instruction": "Add explicit type annotation to parameter 'i' on line 131. Common types: string, number, any, or a specific interface type.",
+          "lines": [
+            131
+          ]
+        },
+        {
+          "path": "src/pr-test.ts",
+          "instruction": "Add explicit type annotation to parameter 'f' on line 141. Common types: string, number, any, or a specific interface type.",
+          "lines": [
+            141
+          ]
+        },
+        {
+          "path": "src/pr-test.ts",
+          "instruction": "Add explicit type annotation to parameter 'f' on line 142. Common types: string, number, any, or a specific interface type.",
+          "lines": [
+            142
+          ]
+        }
+      ],
+      "commands": [],
+      "manualSteps": []
+    },
+    {
+      "errorCode": "TS2304",
+      "pattern": "Cannot find name",
+      "count": 4,
+      "confidence": "high",
+      "fixType": "batch-edit",
+      "description": "Add missing import for 'LLMProvider' to 4 files",
+      "fileChanges": [
+        {
+          "path": "src/providers/claude-provider.ts",
+          "instruction": "Add import statement at top of file: import { LLMProvider } from './llm-provider.interface.js';",
+          "lines": [
+            1
+          ]
+        },
+        {
+          "path": "src/providers/gemini-provider.ts",
+          "instruction": "Add import statement at top of file: import { LLMProvider } from './llm-provider.interface.js';",
+          "lines": [
+            1
+          ]
+        },
+        {
+          "path": "src/providers/openai-provider.ts",
+          "instruction": "Add import statement at top of file: import { LLMProvider } from './llm-provider.interface.js';",
+          "lines": [
+            1
+          ]
+        },
+        {
+          "path": "src/providers/openrouter-provider.ts",
+          "instruction": "Add import statement at top of file: import { LLMProvider } from './llm-provider.interface.js';",
+          "lines": [
+            1
+          ]
+        }
+      ],
+      "commands": [],
+      "manualSteps": []
+    },
+    {
+      "errorCode": "TS2307",
+      "pattern": "Cannot find module",
+      "count": 3,
+      "confidence": "high",
+      "fixType": "command",
+      "description": "Install missing dependency '@octokit/rest'",
+      "fileChanges": [],
+      "commands": [
+        "bun add @octokit/rest"
+      ],
+      "manualSteps": []
+    },
+    {
+      "errorCode": "TS2834",
+      "pattern": "Missing file extension in import",
+      "count": 2,
+      "confidence": "high",
+      "fixType": "batch-edit",
+      "description": "Add .js extensions to 2 import statements across 2 files",
+      "fileChanges": [
+        {
+          "path": "src/agents/review-engine.ts",
+          "instruction": "Add .js extension to all relative import statements on lines: 4. Change patterns like \"from './foo'\" to \"from './foo.js'\" and \"from '../bar/baz'\" to \"from '../bar/baz.js'\"",
+          "lines": [
+            4
+          ]
+        },
+        {
+          "path": "src/pr-test.ts",
+          "instruction": "Add .js extension to all relative import statements on lines: 6. Change patterns like \"from './foo'\" to \"from './foo.js'\" and \"from '../bar/baz'\" to \"from '../bar/baz.js'\"",
+          "lines": [
+            6
+          ]
+        }
+      ],
+      "commands": [],
+      "manualSteps": []
+    },
+    {
+      "errorCode": "TS7016",
+      "pattern": "Missing type declarations",
+      "count": 1,
+      "confidence": "high",
+      "fixType": "command",
+      "description": "Install type declarations for 'js-yaml'. '/Users/forestmars/sandbox/pedal/node_modules/js-yaml/dist/js-yaml.mjs' implicitly has an 'any'",
+      "fileChanges": [],
+      "commands": [
+        "bun add -d @types/js-yaml'. '/Users/forestmars/sandbox/pedal/node_modules/js-yaml/dist/js-yaml.mjs' implicitly has an 'any"
+      ],
+      "manualSteps": []
+    }
+  ]
+}
