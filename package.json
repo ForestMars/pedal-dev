@@ -8,7 +8,9 @@
     "start": "bun run build:barrels && tsx node_modules/.bin/probot run ./src/index.ts",
     "dev": "bun run build:barrels && CONFIG_PATH='./config/agent-workflow.yml' dotenv -e config/env -- bun --watch tsx node_modules/.bin/probot run ./src/index.ts",
     "smee": "smee --url https://smee.io/soupchannel --target http://localhost:3000/", 
-    "fix": "bun run src/code-tools/smart-fix.ts"
+    "smartfix": "bun run src/code-tools/smart-fix.ts",
+    "fix": "bun src/scripts/smartfix/mrfixit.ts",
+    "fix:build": "bun run build 2>&1 | bun src/scripts/smartfix/smart-fix.ts"
   },
   "dependencies": {
     "probot": "^13.3.0",
