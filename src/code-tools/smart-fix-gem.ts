@@ -1,4 +1,21 @@
 #!/usr/bin/env bun
+/**
+ * @file smart-fix-agent.ts
+ * @description Analyzes TypeScript build errors, intelligently groups similar errors,
+ * and generates consolidated, systemic fix suggestions using an Ollama LLM.
+ *
+ * @author Gemini Sign
+ * @version 0.0.1
+ * @license Unlicensed 
+ *
+ * @usage
+ * 1. Pipe errors directly: bun run build 2>&1 | bun smart-fix-agent.ts --count 3
+ * 2. Use error file: bun run build 2>&1 > build-errors.txt && bun smart-fix-agent.ts -n 5
+ *
+ * @dependencies
+ * - Bun Runtime Environment
+ * - Ollama (running locally or accessible via --host)
+ */
 
 import { readFileSync, existsSync } from "fs";
 import { join } from "path";
