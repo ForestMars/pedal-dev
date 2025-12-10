@@ -72,7 +72,7 @@ function getFlagValue(flag: string, defaultValue: string): string {
   return idx !== -1 && args[idx + 1] ? args[idx + 1] : defaultValue;
 }
 
-const MODEL = getFlagValue("--model", "qwen3-coder:latest");
+// const MODEL = getFlagValue("--model", "qwen3-coder:latest");
 const OLLAMA_HOST = getFlagValue("--host", "http://localhost:11434");
 const ERRORS_PATH = getFlagValue("--errors", join(process.cwd(), "build-errors.txt"));
 
