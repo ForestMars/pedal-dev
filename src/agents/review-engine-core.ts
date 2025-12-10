@@ -18,46 +18,23 @@ export class ReviewEngineCore {
         const hunkRegex = /@@ -\d+,\d+ \+(\d+),(\d+) @@/g;
         let match;
 
+        console.log(`  🔍 Checking if line ${line} is in hunk for patch:`);
+        console.log(`     Patch preview: ${patch.substring(0, 200)}...`);
+
         while ((match = hunkRegex.exec(patch)) !== null) {
             const startLine = parseInt(match[1], 10);
             const numLines = parseInt(match[2], 10);
+            const endLine = startLine + numLines;
+            
+            console.log(`     Hunk range: ${startLine}-${endLine} (checking ${line})`);
 
             if (line >= startLine && line < startLine + numLines) {
+                console.log(`     ✓ Line ${line} IS in hunk ${startLine}-${endLine}`);
                 return true;
             }
         }
+        console.log(`     ✗ Line ${line} NOT in any hunk`);
         return false;
-    }
-
-    private getPositionInDiff(patch: string, targetLine: number): number | null {
-        const lines = patch.split('\n');
-        let currentLine = 0;
-        let position = 0;
-        
-        for (let i = 0; i < lines.length; i++) {
-            const line = lines[i];
-            position++;
-            
-            // Parse hunk header: @@ -10,5 +12,7 @@
-            if (line.startsWith('@@')) {
-                const match = line.match(/@@ -\d+,\d+ \+(\d+)/);
-                if (match) {
-                    currentLine = parseInt(match[1], 10) - 1; // Start from line before
-                }
-                continue;
-            }
-            
-            // Track line numbers for additions and context
-            if (line.startsWith('+') || line.startsWith(' ')) {
-                currentLine++;
-                if (currentLine === targetLine) {
-                    return position;
-                }
-            }
-            // Deletions don't increment the "new" line counter
-        }
-        
-        return null;
     }
 
     async postReview(
@@ -169,17 +146,17 @@ export class ReviewEngineCore {
                     return null;
                 }
 
-                const position = this.getPositionInDiff(patch, line);
-                if (position === null) {
-                    console.warn(`[VALIDATION_FAIL] Skipping finding for ${f.filename}:${line}. Cannot calculate position in diff.`);
+                if (!this.isLineInHunk(patch, line)) {
+                    console.warn(`[VALIDATION_FAIL] Skipping finding for ${f.filename}:${line}. Line not in diff hunk.`);
                     return null;
                 }
                 
-                console.log(`[VALIDATION_SUCCESS] Posting comment on ${f.filename}:${line} (position ${position}).`);
+                console.log(`[VALIDATION_SUCCESS] Posting comment on ${f.filename}:${line}.`);
                 
                 return {
                     path: f.filename,
-                    position: position,  // Changed from 'line' to 'position'
+                    line: line,
+                    side: 'RIGHT',
                     body: `**[${f.severity?.toUpperCase() || 'ISSUE'} - ${f.category.toUpperCase()}]** ${f.message}\n\n💡 *Suggestion*: ${f.suggestion || 'Review and address this issue.'}`
                 };
             })
