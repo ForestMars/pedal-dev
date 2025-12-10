@@ -6,8 +6,11 @@
  * @version 0.0.11
  */
 
+
+
 import { readFileSync, existsSync } from "fs";
 import { join } from "path";
+import { join } from 'path';
 import type { ErrorGroup, TSError, FixResult } from './types';
 import { analyzeWithRules } from './engines/rules';
 import { analyzeWithAnalyser } from './engines/analyser';
@@ -47,6 +50,10 @@ function getConfig(): Config {
     streaming: process.env.STREAMING !== 'false'
   };
 }
+
+// Select engine via environment variable
+// Options: "RULES" or "LLM"
+const engineType = process.env.SMARTFIX_ENGINE || "LLM";
 
 // --- Parse TypeScript errors ---
 function parseTypeScriptErrors(output: string): TSError[] {
@@ -153,6 +160,10 @@ function generateAiderOutput(fixes: Array<{ group: ErrorGroup; fix: FixResult }>
 async function main() {
   const config = getConfig();
 
+
+  console.log('DEBUG: process.env.ENGINE =', process.env.ENGINE);
+  console.log('DEBUG: config.engine =', config.engine);
+
   console.log('🔧 Smart TypeScript Error Fixer (Harness)');
   console.log(`Engine: ${config.engine}`);
   console.log(`LLM Model: ${config.model}`);
@@ -187,20 +198,35 @@ async function main() {
   console.log(`Found ${errors.length} errors in ${groups.length} categories`);
   console.log(`Processing ${groupsToProcess.length} categories\n`);
   console.log('━'.repeat(60) + '\n');
+  const promptPath = join(process.cwd(), 'prompts/fix-suggestion.prompt.txt');
+  const promptTemplate = existsSync(promptPath) ? readFileSync(promptPath, 'utf8') : null;
 
   // --- Invoke selected engine ---
   let result: { fixes: Array<{ group: ErrorGroup; fix: FixResult }>; unknown?: ErrorGroup[] };
-  if (config.engine === 'rules') {
-    result = analyzeWithRules(groupsToProcess);
-  } else if (config.engine === 'analyser') {
-    result = await analyzeWithAnalyser(groupsToProcess, config);
-  } else {
-    throw new Error(`Unknown ENGINE value: ${config.engine}`);
+
+  try {
+    if (config.engine === 'rules') {
+      result = analyzeWithRules(groupsToProcess);
+    } else if (config.engine === 'analyser') {
+      result = await analyzeWithAnalyser(groupsToProcess, config, promptTemplate);
+    }
+    console.log('DEBUG: result =', result);
+  } catch (error) {
+    console.error('ERROR calling engine:', error);
+    throw error;
   }
 
   // --- Write outputs ---
-  await Bun.write(config.outputJsonPath, JSON.stringify(generateAiderOutput(result.fixes), null, 2));
-  await Bun.write(config.outputTxtPath, generateAiderText(result.fixes));
+  // Ensure fixesArray is an array, defaulting to [] if result or result.fixes is undefined
+  const fixesArray = result?.fixes || [];
+  console.log('DEBUG: result =', result);
+  console.log('DEBUG: result.fixes =', result.fixes); 
+  console.log('DEBUG: fixesArray =', fixesArray);
+  console.log('DEBUG: fixesArray length =', fixesArray?.length);
+
+  // Use the fixesArray for both output functions
+  await Bun.write(config.outputJsonPath, JSON.stringify(generateAiderOutput(fixesArray), null, 2));
+  await Bun.write(config.outputTxtPath, generateAiderText(fixesArray)); 
 
   console.log(`💾 Fixes written to ${config.outputJsonPath} (JSON)`);
   console.log(`💾 Fixes written to ${config.outputTxtPath} (Aider-style text)`);
