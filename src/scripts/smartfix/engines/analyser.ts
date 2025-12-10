@@ -8,8 +8,18 @@
  * @license MIT
  */
 
-import type { ErrorGroup } from '../types';
-import type { Config } from '../mrfixit';
+import type { ErrorGroup, FixResult } from '../types';
+
+interface Config {
+  engine: 'rules' | 'analyser';
+  model?: string;
+  ollamaHost: string;
+  maxGroups: number;
+  errorsPath: string;
+  outputJsonPath: string;
+  outputTxtPath: string;
+  streaming: boolean;
+}
 
 /**
  * Sends a grouped set of TypeScript errors to the LLM and returns suggested fixes.
@@ -19,15 +29,14 @@ export async function analyzeWithAnalyser(
   groups: ErrorGroup[],
   config: Config,
   promptTemplate: string | null
-): Promise<Array<{ group: ErrorGroup; fix: string }>> {
+): Promise<{ fixes: Array<{ group: ErrorGroup; fix: FixResult }> }> {
   const results: Array<{ group: ErrorGroup; fix: FixResult }> = [];
+
+  console.log(`🤖 Starting LLM analysis of ${groups.length} error groups...\n`);
 
   for (let i = 0; i < groups.length; i++) {
     const group = groups[i];
     const startTime = Date.now(); 
-
-    console.log(`🤖 Starting LLM analysis of ${groups.length} error groups...\n`);
-
 
     console.log(`🔧 [${i + 1}/${groups.length}] Processing ${group.code}: ${group.pattern}`);
     console.log(`   ${group.count} occurrence(s) across ${group.errors.length} file(s)`);
@@ -69,7 +78,7 @@ export async function analyzeWithAnalyser(
         throw new Error(`Ollama API error: ${response.status} - ${text}`);
       }
 
-      let fix: string;
+      let fixDescription: string;
 
       if (config.streaming) {
         console.log(`   ⏳ Streaming response...`);
@@ -82,28 +91,48 @@ export async function analyzeWithAnalyser(
             if (obj.response) output += obj.response;
           } catch {}
         }
-        fix = output || 'No solution generated';
+        fixDescription = output || 'No solution generated';
       } else {
         const data = await response.json();
-        fix = data.response || 'No solution generated';
+        fixDescription = data.response || 'No solution generated';
       }
 
       const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
       console.log(`   ✅ Done in ${elapsed}s\n`);
 
-      results.push({ group, fix });
+      // Create a properly structured FixResult object
+      const fixResult: FixResult = {
+        confidence: 'medium',
+        fixType: 'suggestion',
+        description: fixDescription,
+        fileChanges: group.errors.map(e => e.file).join(', ')
+      };
+
+      results.push({ group, fix: fixResult });
 
     } catch (error: any) {
       const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+      const errorMsg = error.name === 'TimeoutError' || error.message.includes('timeout')
+        ? `Request timed out after 300 seconds. Try using --stream or a faster model.`
+        : error.message;
+
       if (error.name === 'TimeoutError' || error.message.includes('timeout')) {
         console.log(`   ⏱️  Timeout after ${elapsed}s\n`);
-        results.push({ group, fix: `Error: Request timed out after 300 seconds. Try using --stream or a faster model.` });
       } else {
         console.log(`   ❌ Error after ${elapsed}s: ${error.message}\n`);
-        results.push({ group, fix: `Error: ${error.message}` });
       }
+
+      // Return a properly structured error FixResult
+      const errorFixResult: FixResult = {
+        confidence: 'low',
+        fixType: 'manual',
+        description: `Error: ${errorMsg}`,
+        fileChanges: ''
+      };
+
+      results.push({ group, fix: errorFixResult });
     }
   }
 
-  return results;
+  return { fixes: results };
 }
