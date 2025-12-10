@@ -1,6 +1,7 @@
 // src/scripts/smartfix/rules/ruleset.ts
 
-import type { ErrorGroup, TSError } from '../types';
+// import type { ErrorGroup, TSError } from '../types';
+import type { ErrorGroup, ErrorRule, FixResult, FileChange } from '../types';
 
 export interface FixResult {
   confidence: 'high' | 'medium' | 'low';
