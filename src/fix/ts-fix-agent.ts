@@ -9,7 +9,7 @@
  */
 
 const OLLAMA_HOST = process.env.OLLAMA_HOST || 'http://localhost:11434';
-const MODEL = process.env.OLLAMA_MODEL || 'qwen3-coder:latest';
+// const MODEL = process.env.OLLAMA_MODEL || 'qwen3-coder:latest';
 
 interface TSError {
   file: string;
