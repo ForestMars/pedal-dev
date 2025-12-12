@@ -90,7 +90,7 @@ Make only the minimal changes needed to fix this error. Do not modify anything e
 // ---- Run pipeline ----
 async function runPipeline() {
   console.log(`Running pipeline with ${pipeline.length} stages`);
-  const TIMEOUT_MS = 180000; // 3 minutes timeout per stage (7B model is slower)
+  const TIMEOUT_MS = 270000; // 3 minutes timeout per stage (7B model is slower)
 
   for (const [index, stage] of pipeline.entries()) {
     console.log(`\n=== Stage ${index + 1}/${pipeline.length} ===`);
