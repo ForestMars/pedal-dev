@@ -1,8 +1,8 @@
 // src/index.ts
 
 import { Probot } from 'probot';
-import { ConfigLoader } from './config/config-loader';
-import { ReviewEngine } from './agents/review-engine';
+import { ConfigLoader } from './config/config-loader.js';
+import { ReviewEngine } from './agents/review-engine.js';
 
 // Global Startup Logic (Executes Once)
 const CONFIG_PATH = process.env.CONFIG_PATH;
